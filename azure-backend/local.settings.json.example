@@ -1,0 +1,18 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "KEY_VAULT_URL": "https://fypod-keyvault.vault.azure.net/",
+    "COSMOS_ENDPOINT": "https://your-cosmosdb-account.documents.azure.com:443/",
+    "COSMOS_KEY": "your-cosmos-db-primary-key",
+    "SUPABASE_URL": "https://uwzrsqhnseepshkffaud.supabase.co",
+    "SUPABASE_ANON_KEY": "your-supabase-anon-key",
+    "JWT_SECRET": "your-supabase-jwt-secret",
+    "SUMOPOD_API_KEY": "your-sumopod-api-key",
+    "GOOGLE_CLIENT_ID": "your-google-oauth-client-id"
+  },
+  "Host": {
+    "CORS": "*"
+  }
+}
