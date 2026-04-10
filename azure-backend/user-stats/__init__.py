@@ -5,10 +5,12 @@ GET /api/user-stats — Get user statistics, credits, and analysis summary
 import azure.functions as func
 import logging
 import json
+from datetime import datetime, timezone
 from shared.auth import authenticate, error_response, success_response
 from shared.cosmos_client import (
     get_container, check_and_regen_credits, get_next_regen_time, MAX_CREDITS
 )
+from shared.email_service import send_security_alert
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -67,6 +69,24 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         ]
 
         is_admin = user.get("role") == "admin"
+
+        # ── Security email on first login of the day (if user opted in) ──────
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if (
+            user.get("alert_prefs", {}).get("email_security_warnings", True)
+            and user.get("last_security_email_date") != today
+            and email
+        ):
+            try:
+                ip = req.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                ua = req.headers.get("User-Agent", "")
+                send_security_alert(email, "Sign-in", ip, ua)
+                # mark so we don't spam more than once/day
+                users_container = get_container("Users")
+                user["last_security_email_date"] = today
+                users_container.upsert_item(user)
+            except Exception as e:
+                logging.warning(f"Security email skipped: {e}")
 
         return success_response({
             "credits_remaining": credits,

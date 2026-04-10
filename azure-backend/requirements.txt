@@ -3,8 +3,11 @@ azure-functions
 azure-cosmos
 azure-keyvault-secrets
 azure-identity
+azure-storage-blob
+azure-communication-email
 PyJWT[crypto]
 cryptography
 requests
 PyPDF2
+PyMuPDF
 json-repair
