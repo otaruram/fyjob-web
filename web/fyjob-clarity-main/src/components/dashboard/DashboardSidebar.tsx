@@ -30,12 +30,26 @@ const DashboardSidebar = () => {
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       <div className="h-16 flex items-center px-4 border-b border-border">
-        {!collapsed && (
-          <span className="text-lg font-bold text-foreground tracking-tight">
-            FY<span className="gradient-text">JOB</span>
+        {!collapsed ? (
+          <span className="text-lg font-bold text-foreground tracking-tight flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary w-5 h-5 shrink-0">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              <circle cx="12" cy="14" r="3"></circle>
+              <path d="M14 16l3 3"></path>
+            </svg>
+            <span>FY<span className="text-primary">JOB</span></span>
+          </span>
+        ) : (
+          <span className="flex items-center justify-center w-full">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary w-6 h-6">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              <circle cx="12" cy="14" r="3"></circle>
+              <path d="M14 16l3 3"></path>
+            </svg>
           </span>
         )}
-        {collapsed && <span className="text-lg font-bold gradient-text mx-auto">F</span>}
       </div>
 
       <SidebarContent className="mt-2">
