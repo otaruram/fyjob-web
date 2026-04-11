@@ -131,13 +131,16 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                    IS_DEFINED(c.killer_quiz) as has_quiz,
                    IS_DEFINED(c.learning_path) as has_learning_path
             FROM c
-            WHERE c.userId = '{user_id}'
+            WHERE c.userId = @uid
             ORDER BY c.created_at DESC
             OFFSET {offset} LIMIT {limit}
         """
 
         analyses = list(history_container.query_items(
-            query=query, enable_cross_partition_query=True
+            query=query,
+            parameters=[{"name": "@uid", "value": user_id}],
+            enable_cross_partition_query=False,
+            partition_key=user_id,
         ))
 
         return success_response(analyses)

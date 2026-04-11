@@ -28,9 +28,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Get analysis history
         try:
             history_container = get_container("AnalysisHistory")
-            query = f"SELECT * FROM c WHERE c.userId = '{user_id}' ORDER BY c.created_at DESC"
+            query = "SELECT * FROM c WHERE c.userId = @uid ORDER BY c.created_at DESC"
             analyses = list(history_container.query_items(
-                query=query, enable_cross_partition_query=True
+                query=query,
+                parameters=[{"name": "@uid", "value": user_id}],
+                enable_cross_partition_query=False,
+                partition_key=user_id,
             ))
         except Exception as e:
             logging.error(f"Failed to get analyses: {e}")
@@ -73,7 +76,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # ── Security email on first login of the day (if user opted in) ──────
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if (
-            user.get("alert_prefs", {}).get("email_security_warnings", True)
+            user.get("alert_prefs", {}).get("email_security_warnings", False)
             and user.get("last_security_email_date") != today
             and email
         ):

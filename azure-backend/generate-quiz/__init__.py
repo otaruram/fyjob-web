@@ -33,15 +33,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Load analysis
         history_container = get_container("AnalysisHistory")
-        analyses = list(history_container.query_items(
-            query=f"SELECT * FROM c WHERE c.id = '{analysis_id}' AND c.userId = '{user_id}'",
-            enable_cross_partition_query=True
-        ))
-
-        if not analyses:
+        try:
+            analysis = history_container.read_item(item=analysis_id, partition_key=user_id)
+        except Exception:
             return error_response("Analysis not found", 404)
 
-        analysis = analyses[0]
+        if analysis.get("userId") != user_id:
+            return error_response("Analysis not found", 404)
 
         # Return existing quiz if already generated
         if analysis.get("killer_quiz"):
@@ -75,7 +73,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Optional email alert when user enabled new-quiz notifications.
         try:
             prefs = user.get("alert_prefs", {}) or {}
-            if prefs.get("email_new_quiz", True) and email:
+            if prefs.get("email_new_quiz", False) and email:
                 send_new_quiz_alert(email, analysis.get("jobTitle", "Target Role"))
         except Exception as e:
             logging.warning(f"Failed sending new quiz email alert: {e}")

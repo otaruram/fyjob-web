@@ -64,15 +64,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Load analysis
         history_container = get_container("AnalysisHistory")
-        analyses = list(history_container.query_items(
-            query=f"SELECT * FROM c WHERE c.id = '{analysis_id}' AND c.userId = '{user_id}'",
-            enable_cross_partition_query=True
-        ))
-
-        if not analyses:
+        try:
+            analysis = history_container.read_item(item=analysis_id, partition_key=user_id)
+        except Exception:
             return error_response("Analysis not found", 404)
 
-        analysis = analyses[0]
+        if analysis.get("userId") != user_id:
+            return error_response("Analysis not found", 404)
 
         # Return existing learning path if already generated
         if analysis.get("learning_path"):

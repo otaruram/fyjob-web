@@ -524,7 +524,7 @@ const CVManager = () => {
       await uploadCVPdf(pdfBase64, file.name);
       
       // Clear sessionStorage cache so new data is fetched
-      try { sessionStorage.removeItem("fyjob_cv_cache"); } catch {}
+      try { sessionStorage.removeItem(CV_CACHE_KEY); } catch {}
       
       await fetchCV(); // Refresh preview
       
@@ -545,7 +545,7 @@ const CVManager = () => {
       await deleteCV();
       setCvData(null);
       // Clear cache
-      try { sessionStorage.removeItem("fyjob_cv_cache"); } catch {}
+      try { sessionStorage.removeItem(CV_CACHE_KEY); } catch {}
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to delete CV");
       setIsLoading(false);
