@@ -115,7 +115,7 @@ AuthService.getToken().then(token => console.log(token));
 az login
 
 # Deploy
-func azure functionapp publish fypod-functions
+func azure functionapp publish fypodku
 ```
 
 ### Method 2: VS Code (Recommended)
@@ -124,7 +124,7 @@ func azure functionapp publish fypod-functions
 2. Open Command Palette (Ctrl+Shift+P)
 3. Select "Azure Functions: Deploy to Function App"
 4. Select your subscription
-5. Select "fypod-functions"
+5. Select "fypodku"
 6. Confirm deployment
 
 ### Method 3: Azure Portal
@@ -139,7 +139,7 @@ func azure functionapp publish fypod-functions
 
 ### View Logs (CLI):
 ```bash
-az webapp log tail --name fypod-functions --resource-group fypod-hackathon-27
+az webapp log tail --name fypodku --resource-group FYPOD
 ```
 
 ### View Logs (Portal):
@@ -176,6 +176,62 @@ Authorization: Bearer <jwt_token>
 ```
 
 Token diverifikasi menggunakan PyJWT dengan Supabase JWT secret.
+
+### Endpoint Protection
+Semua endpoint client-facing memakai `authLevel: anonymous` di Azure layer agar SPA dan extension tidak perlu menyimpan secret palsu di browser.
+
+Proteksi utamanya ada di application layer:
+- Header `Authorization: Bearer <jwt_token>` wajib
+- Validasi JWT Supabase di setiap endpoint
+- Credit checks untuk aksi berbayar
+- Rate limiting pada endpoint sensitif seperti `chat` dan `interview-lite`
+
+## Interview Lite Notes
+
+### Required Cosmos container
+- `InterviewSessions` dengan partition key `/userId`
+
+Gunakan script berikut untuk membuat container yang dibutuhkan:
+```bash
+powershell -ExecutionPolicy Bypass -File .\create-cosmos-containers.ps1
+```
+
+### Required settings for interview flow
+- `SUMOPOD_API_KEY`
+- `INTERVIEW_MAX_TURNS`
+- `INTERVIEW_LOCK_TTL_SEC`
+- `INTERVIEW_TURN_CACHE_TTL_SEC`
+- `INTERVIEW_START_RATE_LIMIT_WINDOW_SEC`
+- `INTERVIEW_START_RATE_LIMIT_MAX_REQUESTS`
+- `INTERVIEW_TURN_RATE_LIMIT_WINDOW_SEC`
+- `INTERVIEW_TURN_RATE_LIMIT_MAX_REQUESTS`
+- `REDIS_URL` atau kombinasi `REDIS_HOST` + `REDIS_KEY`
+- `AZURE_SPEECH_KEY`
+- `AZURE_SPEECH_REGION`
+- `AZURE_SPEECH_STT_CONTENT_TYPE` (default: `audio/wav`)
+- `AZURE_SPEECH_STT_MAX_AUDIO_BYTES` (default: `5242880`)
+- `AZURE_SPEECH_TTS_OUTPUT_FORMAT` (default: `audio-16khz-32kbitrate-mono-mp3`)
+- `AZURE_SPEECH_TTS_VOICE_ID` (default: `id-ID-GadisNeural`)
+- `AZURE_SPEECH_TTS_VOICE_EN` (default: `en-US-JennyNeural`)
+- `AZURE_SPEECH_TTS_VOICE_ZH` (default: `zh-CN-XiaoxiaoNeural`)
+- `AZURE_SPEECH_KEY`
+- `AZURE_SPEECH_REGION`
+- `AZURE_SPEECH_STT_CONTENT_TYPE`
+- `AZURE_SPEECH_STT_MAX_AUDIO_BYTES`
+- `AZURE_SPEECH_TTS_OUTPUT_FORMAT`
+- `AZURE_SPEECH_TTS_VOICE_ID`
+- `AZURE_SPEECH_TTS_VOICE_EN`
+- `AZURE_SPEECH_TTS_VOICE_ZH`
+
+### Interview endpoint
+`POST /api/interview-lite`
+
+Actions:
+- `start` charges 3 credits once per session and returns the first question
+- `turn` processes one answer and returns the next interviewer turn
+- `end` closes the session and returns a concise summary
+- `stt` converts `audioBase64` to `transcriptText` via Azure Speech
+- `tts` converts `text` to `audioBase64` via Azure Speech
 
 ## 📝 API Documentation
 
@@ -309,7 +365,7 @@ Authorization: Bearer <jwt_token>
 
 **Solution:**
 ```bash
-PRINCIPAL_ID=$(az functionapp identity show --name fypod-functions --resource-group fypod-hackathon-27 --query principalId -o tsv)
+PRINCIPAL_ID=$(az functionapp identity show --name fypodku --resource-group FYPOD --query principalId -o tsv)
 az keyvault set-policy --name fypod-keyvault --object-id $PRINCIPAL_ID --secret-permissions get list
 ```
 
@@ -327,7 +383,7 @@ az keyvault set-policy --name fypod-keyvault --object-id $PRINCIPAL_ID --secret-
 **Solution:**
 ```bash
 # Get new Cosmos key
-az cosmosdb keys list --name fypod-cosmos-db --resource-group fypod-hackathon-27
+az cosmosdb keys list --name fypod --resource-group FYPOD
 
 # Update Key Vault
 az keyvault secret set --vault-name fypod-keyvault --name COSMOS-KEY --value "NEW_KEY"
@@ -395,7 +451,7 @@ jobs:
     - name: Deploy to Azure
       uses: Azure/functions-action@v1
       with:
-        app-name: fypod-functions
+        app-name: fypodku
         package: azure-backend
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 ```

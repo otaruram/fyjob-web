@@ -1,8 +1,10 @@
-import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, LogOut } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, LogOut, Mic, Crown } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
+import { getAnalysisHistory } from "@/lib/api";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 
 const DashboardSidebar = () => {
@@ -11,6 +13,20 @@ const DashboardSidebar = () => {
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const collapsed = state === "collapsed";
+  const [hasAnalysis, setHasAnalysis] = useState(false);
+
+  useEffect(() => {
+    const checkAnalysis = async () => {
+      try {
+        const items = await getAnalysisHistory(1, 0);
+        setHasAnalysis(Array.isArray(items) && items.length > 0);
+      } catch {
+        setHasAnalysis(false);
+      }
+    };
+
+    checkAnalysis();
+  }, []);
 
   const navGroups = [
     {
@@ -42,7 +58,7 @@ const DashboardSidebar = () => {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border bg-gradient-to-b from-background via-background to-muted/20">
+    <Sidebar collapsible="icon" className="border-r border-border bg-background">
       <div className="h-16 flex items-center px-4 border-b border-border/70">
         {!collapsed ? (
           <span className="text-lg font-bold text-foreground tracking-tight flex items-center gap-2">
@@ -69,9 +85,9 @@ const DashboardSidebar = () => {
         )}
       </div>
 
-      <SidebarContent className="mt-2 space-y-2 px-2">
+      <SidebarContent className={`mt-2 space-y-2 ${collapsed ? "px-1" : "px-2"}`}>
         {navGroups.map((group) => (
-          <SidebarGroup key={group.label} className="rounded-xl border border-border/60 bg-card/35 px-2 py-2">
+          <SidebarGroup key={group.label} className={collapsed ? "px-0 py-1" : "rounded-xl border border-border/60 bg-card/35 px-2 py-2"}>
             <SidebarGroupLabel className="px-2 text-[10px] text-muted-foreground uppercase tracking-[0.2em]">
               {!collapsed && group.label}
             </SidebarGroupLabel>
@@ -83,10 +99,16 @@ const DashboardSidebar = () => {
                       <NavLink
                         to={item.url}
                         end={item.url === "/dashboard"}
-                        className="rounded-lg border border-transparent px-2.5 py-2 transition-all hover:border-border/70 hover:bg-muted/50"
-                        activeClassName="rounded-lg border border-primary/30 bg-primary/12 text-primary shadow-sm shadow-primary/10 font-medium"
+                        className={collapsed
+                          ? "mx-auto flex h-9 w-9 items-center justify-center rounded-md border border-transparent transition-all hover:bg-muted/60"
+                          : "rounded-lg border border-transparent px-2.5 py-2 transition-all hover:border-border/70 hover:bg-muted/50"
+                        }
+                        activeClassName={collapsed
+                          ? "mx-auto flex h-9 w-9 items-center justify-center rounded-md border border-primary/40 bg-primary/10 text-primary"
+                          : "rounded-lg border border-primary/30 bg-primary/12 text-primary shadow-sm shadow-primary/10 font-medium"
+                        }
                       >
-                        <item.icon className="h-4 w-4 mr-3 shrink-0" />
+                        <item.icon className={`h-4 w-4 shrink-0 ${collapsed ? "mr-0" : "mr-3"}`} />
                         {!collapsed && <span>{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
@@ -96,6 +118,52 @@ const DashboardSidebar = () => {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+
+        <SidebarGroup className={collapsed ? "px-0 py-1" : "rounded-xl border border-primary/25 bg-primary/5 px-2 py-2"}>
+          <SidebarGroupLabel className="px-2 text-[10px] text-primary uppercase tracking-[0.2em] flex items-center gap-1.5">
+            {!collapsed && (
+              <>
+                <Crown className="h-3 w-3" /> Premium
+              </>
+            )}
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="space-y-1">
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  {hasAnalysis ? (
+                    <NavLink
+                      to="/dashboard/interview-lite"
+                      className={collapsed
+                        ? "mx-auto flex h-9 w-9 items-center justify-center rounded-md border border-transparent transition-all hover:bg-muted/60"
+                        : "rounded-lg border border-transparent px-2.5 py-2 transition-all hover:border-border/70 hover:bg-muted/50"
+                      }
+                      activeClassName={collapsed
+                        ? "mx-auto flex h-9 w-9 items-center justify-center rounded-md border border-primary/40 bg-primary/10 text-primary"
+                        : "rounded-lg border border-primary/30 bg-primary/12 text-primary shadow-sm shadow-primary/10 font-medium"
+                      }
+                    >
+                      <Mic className={`h-4 w-4 shrink-0 ${collapsed ? "mr-0" : "mr-3"}`} />
+                      {!collapsed && <span>AI Interview Lite</span>}
+                    </NavLink>
+                  ) : (
+                    <button
+                      disabled
+                      className={collapsed
+                        ? "mx-auto flex h-9 w-9 items-center justify-center rounded-md border border-dashed border-border/60 text-muted-foreground/70"
+                        : "flex w-full items-center rounded-lg border border-dashed border-border/60 px-2.5 py-2 text-muted-foreground/70"
+                      }
+                      title="Analyze at least one job to enable"
+                    >
+                      <Mic className={`h-4 w-4 shrink-0 ${collapsed ? "mr-0" : "mr-3"}`} />
+                      {!collapsed && <span>AI Interview Lite (Locked)</span>}
+                    </button>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-border/70 p-3">

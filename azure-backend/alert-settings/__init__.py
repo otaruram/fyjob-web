@@ -6,6 +6,7 @@ POST /api/alert-settings  — save alert prefs for the user
 import azure.functions as func
 import logging
 import json
+import re
 from shared.auth import authenticate, error_response, success_response, CORS_HEADERS
 from shared.cosmos_client import get_container
 from shared.email_service import send_email
@@ -76,21 +77,25 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             prefs["threshold_low_score"] = max(0, min(100, val))
 
         if "daily_reminder_time" in body:
-            import re
             t = str(body["daily_reminder_time"])
             if re.match(r"^\d{2}:\d{2}$", t):
                 prefs["daily_reminder_time"] = t
 
         email_test_sent = False
-        if body.get("send_test_email") is True and email:
+        test_email_to = str(body.get("test_email_to") or "").strip().lower()
+        if test_email_to and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", test_email_to):
+            return error_response("Invalid test_email_to format", 400)
+
+        target_email = test_email_to or email
+        if body.get("send_test_email") is True and target_email:
             email_test_sent = send_email(
-                to=email,
-                subject="FYJob Alerts Test Email",
+                to=target_email,
+                subject="FYJOB Reminder Test",
                 html_body="""
                 <div style='font-family:sans-serif;max-width:480px;margin:auto'>
-                  <h2>Alert Test Successful</h2>
-                  <p>This is a test email from FYJob alert settings.</p>
-                  <p>If you receive this message, your email alert configuration is active.</p>
+                  <h2>Pengingat FYJOB Aktif</h2>
+                  <p>Ini adalah email test untuk memastikan pengingat karier kamu berjalan normal.</p>
+                  <p>Ayo analisis lowongan terbaru hari ini dan lanjutkan latihan interview agar skor kamu naik stabil setiap minggu.</p>
                 </div>
                 """,
             )

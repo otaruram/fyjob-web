@@ -205,6 +205,31 @@ export interface CVPreview {
   page_images: string[];
 }
 
+export type InterviewLanguage = 'id' | 'en' | 'zh';
+export type InterviewMode = 'text' | 'speech';
+
+export interface InterviewStartResponse {
+  sessionId: string;
+  assistantResponse: string;
+  turnCount: number;
+  maxQuestions?: number;
+  sessionCost?: number;
+  credits_remaining: number;
+}
+
+export interface InterviewTurnResponse {
+  assistantResponse: string;
+  turnCount: number;
+  maxQuestions?: number;
+  completed?: boolean;
+  cached: boolean;
+}
+
+export interface InterviewEndResponse {
+  sessionId: string;
+  summary: string;
+}
+
 // ═══════════════════════════════════════════════════
 // API Endpoints
 // ═══════════════════════════════════════════════════
@@ -306,3 +331,44 @@ export const getCVPreview = () =>
 /** DELETE /api/upload-cv — Delete user's CV */
 export const deleteCV = () =>
   fetchApi<{ message: string; credits_remaining: number }>('/api/upload-cv', 'DELETE');
+
+/** POST /api/interview-lite — Start interview session (cost: 3 credits once per session) */
+export const startInterviewLite = (analysisId: string, language: InterviewLanguage, mode: InterviewMode) =>
+  fetchApi<InterviewStartResponse>('/api/interview-lite', 'POST', {
+    action: 'start',
+    analysisId,
+    language,
+    mode,
+  });
+
+/** POST /api/interview-lite — Process one turn */
+export const turnInterviewLite = (sessionId: string, answerText: string) =>
+  fetchApi<InterviewTurnResponse>('/api/interview-lite', 'POST', {
+    action: 'turn',
+    sessionId,
+    answerText,
+  });
+
+/** POST /api/interview-lite — End session and get summary */
+export const endInterviewLite = (sessionId: string) =>
+  fetchApi<InterviewEndResponse>('/api/interview-lite', 'POST', {
+    action: 'end',
+    sessionId,
+  });
+
+/** POST /api/interview-lite — Speech to Text: sends audioBase64 + contentType, returns transcriptText */
+export const sttInterviewLite = (audioBase64: string, language: InterviewLanguage, contentType?: string) =>
+  fetchApi<{ transcriptText: string }>('/api/interview-lite', 'POST', {
+    action: 'stt',
+    audioBase64,
+    language,
+    contentType,
+  });
+
+/** POST /api/interview-lite — Text to Speech: sends text, returns audioBase64 + outputFormat */
+export const ttsInterviewLite = (text: string, language: InterviewLanguage) =>
+  fetchApi<{ audioBase64: string; outputFormat: string }>('/api/interview-lite', 'POST', {
+    action: 'tts',
+    text,
+    language,
+  });

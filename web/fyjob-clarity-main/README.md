@@ -24,7 +24,7 @@ npm install
 Create `.env.local` (or copy from `.env.local.example`) and set:
 
 ```bash
-VITE_API_BASE_URL=https://<your-function-app>.azurewebsites.net
+VITE_API_BASE_URL=https://fyjob.my.id
 VITE_SUPABASE_URL=<your-supabase-url>
 VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 ```
@@ -59,6 +59,21 @@ npm i -g vercel
 vercel
 vercel --prod
 ```
+
+## Production Domain
+
+- Web app: `https://fyjob.my.id`
+- Extension API target: `https://fyjob.my.id/api`
+- Dashboard login target for extension: `https://fyjob.my.id/auth`
+
+## Deploy Extension to Chrome
+
+1. Open Chrome and go to `chrome://extensions`.
+2. Enable `Developer mode`.
+3. Click `Load unpacked`.
+4. Select the `extension/` folder from this repository.
+5. If you update extension files later, click the `Reload` button on the FYJOB extension card.
+6. Open the FYJOB web dashboard at `https://fyjob.my.id`, log in, then open the extension side panel.
 
 ## Route Behavior
 

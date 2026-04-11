@@ -10,6 +10,7 @@ import CVManager from "./pages/CVManager.tsx";
 import ApplicationHistory from "./pages/ApplicationHistory.tsx";
 import StudyRoom from "./pages/StudyRoom.tsx";
 import KillerQuiz from "./pages/KillerQuiz.tsx";
+import InterviewLite from "./pages/InterviewLite.tsx";
 import Settings from "./pages/Settings.tsx";
 import Alerts from "./pages/Alerts.tsx";
 import Encryption from "./pages/Encryption.tsx";
@@ -94,6 +95,7 @@ const App = () => (
                 <Route path="/dashboard/applications" element={<ProtectedRoute><ApplicationHistory /></ProtectedRoute>} />
                 <Route path="/dashboard/study" element={<ProtectedRoute><StudyRoom /></ProtectedRoute>} />
                 <Route path="/dashboard/quiz" element={<ProtectedRoute><KillerQuiz /></ProtectedRoute>} />
+                <Route path="/dashboard/interview-lite" element={<ProtectedRoute><InterviewLite /></ProtectedRoute>} />
                 <Route path="/dashboard/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/dashboard/settings/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
                 <Route path="/dashboard/settings/encryption" element={<ProtectedRoute><Encryption /></ProtectedRoute>} />

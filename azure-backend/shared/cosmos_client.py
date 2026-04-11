@@ -243,6 +243,19 @@ def deduct_credit(user_id: str) -> int:
     return user["credits_remaining"]
 
 
+def deduct_credits(user_id: str, amount: int) -> int:
+    """Deduct multiple credits atomically within one user document update."""
+    container = get_container("Users")
+    user = container.read_item(item=user_id, partition_key=user_id)
+    if user.get("role") == "admin":
+        return 999999
+
+    amount = max(0, int(amount or 0))
+    user["credits_remaining"] = max(0, user.get("credits_remaining", 0) - amount)
+    container.upsert_item(user)
+    return user["credits_remaining"]
+
+
 def get_next_regen_time(user: Dict[str, Any]) -> str:
     """Calculate when user's next credit regenerates (local midnight)."""
     user_tz = _get_user_tz(user.get("timezone", "Asia/Jakarta"))

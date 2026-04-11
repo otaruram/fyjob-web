@@ -11,3 +11,4 @@ requests
 PyPDF2
 PyMuPDF
 json-repair
+redis

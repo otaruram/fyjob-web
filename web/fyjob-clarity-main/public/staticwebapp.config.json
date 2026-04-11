@@ -3,7 +3,7 @@
     {
       "route": "/api/*",
       "allowedRoles": ["anonymous"],
-      "rewrite": "https://fypodku-g4f2avb0aaewcyaw.indonesiacentral-01.azurewebsites.net/api/:splat"
+      "rewrite": "https://fyjob.my.id/api/:splat"
     }
   ],
   "navigationFallback": {

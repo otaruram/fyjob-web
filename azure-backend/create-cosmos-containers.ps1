@@ -4,8 +4,8 @@
 # ─────────────────────────────────────────────────────
 
 # Variables — update these to match your Azure setup
-$RESOURCE_GROUP = "fypodku"
-$ACCOUNT_NAME = "fypodku-cosmosdb"   # Your Cosmos DB account name
+$RESOURCE_GROUP = "FYPOD"
+$ACCOUNT_NAME = "fypod"   # Cosmos DB account name
 $DATABASE_NAME = "FypodDB"
 
 # Check if logged in
@@ -20,24 +20,31 @@ try {
 Write-Host "`n=== Creating Cosmos DB Containers ===" -ForegroundColor Green
 
 # 1. UjangChats container (partition key: /userId)
-Write-Host "`n[1/2] Creating 'UjangChats' container..." -ForegroundColor Yellow
+Write-Host "`n[1/3] Creating 'UjangChats' container..." -ForegroundColor Yellow
 az cosmosdb sql container create `
     --resource-group $RESOURCE_GROUP `
     --account-name $ACCOUNT_NAME `
     --database-name $DATABASE_NAME `
     --name "UjangChats" `
-    --partition-key-path "/userId" `
-    --throughput 400
+    --partition-key-path "/userId"
 
 # 2. UserActivity container (partition key: /userId)
-Write-Host "`n[2/2] Creating 'UserActivity' container..." -ForegroundColor Yellow
+Write-Host "`n[2/3] Creating 'UserActivity' container..." -ForegroundColor Yellow
 az cosmosdb sql container create `
     --resource-group $RESOURCE_GROUP `
     --account-name $ACCOUNT_NAME `
     --database-name $DATABASE_NAME `
     --name "UserActivity" `
-    --partition-key-path "/userId" `
-    --throughput 400
+    --partition-key-path "/userId"
+
+# 3. InterviewSessions container (partition key: /userId)
+Write-Host "`n[3/3] Creating 'InterviewSessions' container..." -ForegroundColor Yellow
+az cosmosdb sql container create `
+    --resource-group $RESOURCE_GROUP `
+    --account-name $ACCOUNT_NAME `
+    --database-name $DATABASE_NAME `
+    --name "InterviewSessions" `
+    --partition-key-path "/userId"
 
 Write-Host "`n=== All containers created! ===" -ForegroundColor Green
 Write-Host "Database: $DATABASE_NAME" -ForegroundColor Cyan
@@ -46,3 +53,4 @@ Write-Host "  - Users (existing, partition: /id)" -ForegroundColor White
 Write-Host "  - AnalysisHistory (existing, partition: /userId)" -ForegroundColor White
 Write-Host "  - UjangChats (NEW, partition: /userId)" -ForegroundColor Green
 Write-Host "  - UserActivity (NEW, partition: /userId)" -ForegroundColor Green
+Write-Host "  - InterviewSessions (NEW, partition: /userId)" -ForegroundColor Green

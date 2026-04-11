@@ -51,6 +51,7 @@ const EMAIL_ALERT_ITEMS: Array<{
 
 const Alerts = () => {
   const [prefs, setPrefs] = useState<AlertPrefs>(DEFAULT);
+  const [testEmailTo, setTestEmailTo] = useState("okitr52@gmail.com");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingEmail, setTestingEmail] = useState(false);
@@ -115,7 +116,7 @@ const Alerts = () => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ...prefs, send_test_email: true }),
+        body: JSON.stringify({ ...prefs, send_test_email: true, test_email_to: testEmailTo.trim() }),
       });
       if (!res.ok) throw new Error("Test email failed");
       const data = await res.json();
@@ -243,6 +244,24 @@ const Alerts = () => {
                       className="w-full bg-card border border-border rounded-lg px-3 py-2"
                     />
                   </div>
+
+                  <div className="rounded-lg border border-border bg-card/20 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Reminder preview</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">Waktunya level up karier kamu</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Jam {prefs.daily_reminder_time || "20:00"} kami kirim pengingat ringan. Ayo analisis 1 lowongan hari ini,
+                      update score kamu, lalu lanjut latihan interview.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-border bg-card/20 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Weekly message preview</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">Ringkasan performa mingguan FYJOB</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Minggu ini kami rangkum trend match score, progress quiz, dan gap skill utama.
+                      Fokuskan minggu depan pada area dengan nilai di bawah {prefs.threshold_low_score}%.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -268,6 +287,13 @@ const Alerts = () => {
               </div>
               <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto">
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <input
+                    type="email"
+                    value={testEmailTo}
+                    onChange={(e) => setTestEmailTo(e.target.value)}
+                    placeholder="Target test email"
+                    className="w-full sm:w-64 bg-card border border-border rounded-lg px-3 py-2 text-sm"
+                  />
                   <button
                     onClick={handleSendTestEmail}
                     disabled={testingEmail || saving}

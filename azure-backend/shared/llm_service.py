@@ -13,7 +13,7 @@ from .cosmos_client import get_secret
 SUMOPOD_BASE_URL = "https://ai.sumopod.com/v1/chat/completions"
 
 # Model routing
-MODEL_GEMINI_FLASH = "gemini/gemini-2.0-flash"      # Regular users
+MODEL_GEMINI_FLASH = "gemini/gemini-2.5-flash"      # Regular users, low-cost default
 MODEL_CLAUDE_HAIKU = "claude-haiku-4-5"           # Pro users (future)
 MODEL_GEMINI_PRO = "gemini/gemini-2.5-pro"        # Pro users (future)
 MODEL_GEMINI_3_PRO = "gemini/gemini-3-pro-preview" # Admin only

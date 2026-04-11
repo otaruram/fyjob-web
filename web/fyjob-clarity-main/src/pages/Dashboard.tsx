@@ -106,13 +106,13 @@ const Dashboard = () => {
         
         {/* Next Regen Timer Info */}
         {stats?.next_regen_time && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-800">
-            <Clock className="w-3.5 h-3.5" />
-            <span>Next credit regen (+1): </span>
+          <div className="flex items-center gap-2 text-xs text-slate-700 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-300 shadow-sm">
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-slate-500">Next credit regen (+1): </span>
             <span className="font-mono text-primary font-medium">
               {new Date(stats.next_regen_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </span>
-            <span className="opacity-50"> ({stats.timezone})</span>
+            <span className="text-slate-400"> ({stats.timezone})</span>
           </div>
         )}
       </motion.div>

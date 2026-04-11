@@ -235,6 +235,12 @@ const StudyRoom = () => {
                             <h3 className="text-lg font-bold text-foreground">{selectedAnalysis?.jobTitle}</h3>
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">Est. Completion: {learningPath.total_hours} Hours</p>
+                          {progress >= 100 && (
+                            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success">
+                              <Zap className="h-3.5 w-3.5" />
+                              Learning path completed. Nice work, keep the momentum.
+                            </div>
+                          )}
                         </div>
                         <div className="text-right shrink-0">
                           <span className="text-2xl font-bold text-foreground">{progress}%</span>
