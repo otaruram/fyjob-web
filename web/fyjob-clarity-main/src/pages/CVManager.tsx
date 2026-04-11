@@ -30,6 +30,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useAuth } from "@/contexts/AuthContext";
 import { uploadCV, uploadCVPdf, getCVPreview, deleteCV, CVPreview as CVPreviewType } from "@/lib/api";
 
 
@@ -95,7 +96,8 @@ const sectionLabels: Record<BuilderSectionKey, string> = {
   certifications: "Certifications",
 };
 
-const BUILDER_DRAFT_KEY = "fyjob_cv_builder_draft_v1";
+const BUILDER_DRAFT_KEY_BASE = "fyjob_cv_builder_draft_v1";
+const CV_CACHE_KEY_BASE = "fyjob_cv_cache";
 
 const createEmptyExperience = (): ExperienceEntry => ({
   company: "",
@@ -314,6 +316,10 @@ const generateHTMLPreview = (text: string, template: string): string => {
 
 const CVManager = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const storageUserKey = user?.id || user?.email || "anonymous";
+  const BUILDER_DRAFT_KEY = `${BUILDER_DRAFT_KEY_BASE}_${storageUserKey}`;
+  const CV_CACHE_KEY = `${CV_CACHE_KEY_BASE}_${storageUserKey}`;
   const [activeTab, setActiveTab] = useState("upload");
   const [selectedTemplate, setSelectedTemplate] = useState<string>(templates[0].id);
   const [cvData, setCvData] = useState<CVPreviewType | null>(null);
@@ -405,7 +411,6 @@ const CVManager = () => {
   };
 
   // Load CV Preview — with sessionStorage cache to avoid redundant API calls
-  const CV_CACHE_KEY = "fyjob_cv_cache";
   
   const fetchCV = useCallback(async () => {
     try {
