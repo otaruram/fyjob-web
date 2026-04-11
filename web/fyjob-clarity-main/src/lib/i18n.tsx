@@ -31,7 +31,7 @@ const dictionary = {
     feat_study_title: "Study Room",
     feat_study_desc: "AI-generated learning paths addressing your exact technical skill gaps.",
     feat_quiz_title: "Killer Quiz",
-    feat_quiz_desc: "10 multiple-choice and 5 essay questions at FAANG-level difficulty to test your readiness.",
+    feat_quiz_desc: "5 multiple-choice and 5 essay questions at FAANG-level difficulty to test your readiness.",
     feat_cv_title: "ATS CV Generator",
     feat_cv_desc: "God-tier resume builder guaranteed to parse correctly through enterprise applicant tracking systems.",
     feat_free_title: "Free Access",

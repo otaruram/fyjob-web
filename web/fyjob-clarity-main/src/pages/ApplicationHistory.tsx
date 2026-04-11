@@ -57,6 +57,37 @@ type HistoryItem = {
   has_learning_path: boolean;
 };
 
+type UjangCachePayload = Record<string, { text: string; savedAt: number }>;
+
+const UJANG_CACHE_KEY = "fyjob_ujang_history_cache_v1";
+const UJANG_CACHE_TTL_MS = 1000 * 60 * 60 * 12;
+
+const readUjangCache = (): UjangCachePayload => {
+  try {
+    const raw = localStorage.getItem(UJANG_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as UjangCachePayload;
+    const now = Date.now();
+    const filtered = Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => value?.text && now - Number(value.savedAt || 0) <= UJANG_CACHE_TTL_MS)
+    );
+    if (Object.keys(filtered).length !== Object.keys(parsed).length) {
+      localStorage.setItem(UJANG_CACHE_KEY, JSON.stringify(filtered));
+    }
+    return filtered;
+  } catch {
+    return {};
+  }
+};
+
+const writeUjangCache = (next: UjangCachePayload) => {
+  try {
+    localStorage.setItem(UJANG_CACHE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore quota/storage errors for optional cache
+  }
+};
+
 const ApplicationHistory = () => {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("date");
@@ -73,6 +104,12 @@ const ApplicationHistory = () => {
   const [ujangErrors, setUjangErrors] = useState<Record<string, string>>({});
   const [previewItem, setPreviewItem] = useState<HistoryItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const cache = readUjangCache();
+    const hydrated = Object.fromEntries(Object.entries(cache).map(([id, value]) => [id, value.text]));
+    setUjangResponses(hydrated);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -138,6 +175,9 @@ const ApplicationHistory = () => {
         delete clone[app.id];
         return clone;
       });
+      const cache = readUjangCache();
+      delete cache[app.id];
+      writeUjangCache(cache);
     } catch (error: any) {
       alert(error?.message || "Failed to delete analysis");
     } finally {
@@ -167,6 +207,9 @@ const ApplicationHistory = () => {
 
       const clean = sanitizeUjangText(result?.response || "Analysis is not available.");
       setUjangResponses((prev) => ({ ...prev, [app.id]: clean }));
+      const cache = readUjangCache();
+      cache[app.id] = { text: clean, savedAt: Date.now() };
+      writeUjangCache(cache);
     } catch (error: any) {
       const msg = error?.message || "Failed to fetch Ujang analysis.";
       setUjangErrors((prev) => ({ ...prev, [app.id]: msg }));
@@ -286,7 +329,6 @@ const ApplicationHistory = () => {
                 <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="text-muted-foreground min-w-[200px]">Job Role & Portal</TableHead>
                   <TableHead className="text-muted-foreground">Match</TableHead>
-                  <TableHead className="text-muted-foreground">Features Used</TableHead>
                   <TableHead className="text-muted-foreground">Date Scanned</TableHead>
                   <TableHead className="text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
@@ -310,16 +352,6 @@ const ApplicationHistory = () => {
                           {app.matchScore}%
                         </span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                       <div className="flex gap-2">
-                          <Badge variant="outline" className={`border-primary/30 ${app.has_learning_path ? 'bg-primary/20 text-primary' : 'bg-transparent text-muted-foreground opacity-50'} text-[10px] px-1.5 py-0 h-5`}>
-                             <BookOpen className="w-3 h-3 mr-1" /> Path
-                          </Badge>
-                          <Badge variant="outline" className={`border-primary/30 ${app.has_quiz ? 'bg-primary/20 text-primary' : 'bg-transparent text-muted-foreground opacity-50'} text-[10px] px-1.5 py-0 h-5`}>
-                             <Swords className="w-3 h-3 mr-1" /> Quiz
-                          </Badge>
-                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       <div className="flex items-center gap-1.5">
@@ -347,23 +379,26 @@ const ApplicationHistory = () => {
                           View Details
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
-                          className="h-8 hover:text-primary"
+                          className="h-8"
                           onClick={() => handleAskUjang(app)}
                           disabled={ujangLoadingId === app.id}
                         >
                           <Bot className="w-4 h-4 mr-2 text-primary" />
-                          {ujangLoadingId === app.id ? "Analyzing..." : "Ask Ujang"}
+                          {ujangLoadingId === app.id ? "Analyzing..." : (ujangResponses[app.id] ? "Ask Ujang (Cached)" : "Ask Ujang")}
                         </Button>
                        </div>
                     </TableCell>
                   </TableRow>
                   {expandedId === app.id && (
                     <TableRow className="border-border/60 bg-muted/20">
-                      <TableCell colSpan={5} className="py-4">
-                        <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
-                          <p className="text-xs uppercase tracking-wider text-primary font-semibold mb-2">Ujang Analysis</p>
+                      <TableCell colSpan={4} className="py-4">
+                        <div className="rounded-lg border border-border bg-background/70 p-4">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="text-xs uppercase tracking-wider text-primary font-semibold">Ujang Analysis</p>
+                            {ujangResponses[app.id] && <span className="text-[10px] text-muted-foreground">cached</span>}
+                          </div>
                           {ujangLoadingId === app.id ? (
                             <p className="text-sm text-muted-foreground">Analyzing your job and CV...</p>
                           ) : ujangErrors[app.id] ? (
@@ -382,7 +417,7 @@ const ApplicationHistory = () => {
                 
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-12">
                       <div className="flex flex-col items-center justify-center">
                         <Search className="w-8 h-8 opacity-20 mb-3" />
                         <p>No scans found.</p>
@@ -440,14 +475,14 @@ const ApplicationHistory = () => {
                     View Details
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-8 flex-1 hover:text-primary"
+                    className="h-8 flex-1"
                     onClick={() => handleAskUjang(app)}
                     disabled={ujangLoadingId === app.id}
                   >
                     <Bot className="w-4 h-4 mr-2 text-primary" />
-                    {ujangLoadingId === app.id ? "Analyzing..." : "Ask Ujang"}
+                    {ujangLoadingId === app.id ? "Analyzing..." : (ujangResponses[app.id] ? "Ask Ujang (Cached)" : "Ask Ujang")}
                   </Button>
                 </div>
               </div>

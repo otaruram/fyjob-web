@@ -91,9 +91,10 @@ Questions should test whether the candidate is ready for THIS SPECIFIC JOB.
 
 Generate EXACTLY:
 - 5 Multiple Choice questions (4 options each, one correct)
-- 2 Essay questions (scenario-based, deep thinking)
+- 5 Essay questions (scenario-based, deep thinking)
 
 All questions MUST be directly relevant to the job posting's requirements.
+All questions MUST be FAANG-level difficulty with realistic trade-off thinking.
 
 OUTPUT FORMAT (JSON ONLY):
 {{

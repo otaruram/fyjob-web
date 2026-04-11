@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, Terminal } from "lucide-react";
 import { motion } from "framer-motion";
+import { FyjobLogo } from "@/components/FyjobLogo";
 
 export const HeroSection = ({ t }: { t: any }) => {
   return (
@@ -51,9 +52,9 @@ export const HeroSection = ({ t }: { t: any }) => {
                <Terminal className="h-4 w-4" /> {t('hero_cta')}
                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
             </Link>
-            <a href="https://github.com" target="_blank" className="flex items-center gap-2 border border-border bg-card/50 hover:bg-card hover:border-primary/50 text-foreground font-semibold px-8 py-4 rounded-xl transition-all text-sm w-full sm:w-auto justify-center">
-               {t('hero_github')}
-            </a>
+            <div className="flex items-center justify-center w-full sm:w-auto border border-border bg-card/70 backdrop-blur px-6 py-4 rounded-xl">
+              <FyjobLogo compact iconClassName="h-4 w-4" wordmarkClassName="text-sm font-bold tracking-tight" />
+            </div>
          </motion.div>
       </div>
     </section>

@@ -2,6 +2,61 @@ import { supabase } from './supabase';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
+const decodeJwtPayload = (token?: string | null) => {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+};
+
+const getJwtExpiration = (token?: string | null) => {
+  const exp = Number(decodeJwtPayload(token)?.exp);
+  return Number.isFinite(exp) ? exp : null;
+};
+
+const getEffectiveSessionExpiry = (token?: string | null, expiresAt?: number | null) => {
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) return expiresAt;
+  return getJwtExpiration(token);
+};
+
+const isSessionExpiringSoon = (token?: string | null, expiresAt?: number | null, bufferSeconds = 300) => {
+  const effectiveExpiry = getEffectiveSessionExpiry(token, expiresAt);
+  if (!effectiveExpiry) return false;
+  const nowInSeconds = Math.floor(Date.now() / 1000);
+  return effectiveExpiry <= nowInSeconds + bufferSeconds;
+};
+
+let refreshSessionPromise: Promise<string | null> | null = null;
+
+const refreshAuthToken = async (reason: string) => {
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = (async () => {
+      console.warn(`[FYJOB API] ${reason}; attempting refreshSession...`);
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshData?.session?.access_token) {
+        console.log('[FYJOB API] refreshSession succeeded');
+        return refreshData.session.access_token;
+      }
+
+      console.error('[FYJOB API] No valid session found', refreshError);
+      return null;
+    })();
+
+    refreshSessionPromise.finally(() => {
+      refreshSessionPromise = null;
+    });
+  }
+
+  return refreshSessionPromise;
+};
+
 /**
  * Gets a valid JWT token from Supabase for backend API calls.
  * Tries cached session first, then forces a refresh if stale.
@@ -9,19 +64,10 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, ''
 export const getAuthToken = async (): Promise<string | null> => {
   // 1. Try cached session
   const { data: { session }, error } = await supabase.auth.getSession();
-  if (session?.access_token) return session.access_token;
+  if (session?.access_token && !isSessionExpiringSoon(session.access_token, session.expires_at)) return session.access_token;
 
   // 2. Cached session is empty/stale — attempt a forced refresh
-  console.warn('[FYJOB API] getSession returned null, attempting refreshSession...');
-  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-  if (refreshData?.session?.access_token) {
-    console.log('[FYJOB API] refreshSession succeeded');
-    return refreshData.session.access_token;
-  }
-
-  // 3. Both failed — user genuinely not authenticated
-  console.error('[FYJOB API] No valid session found', error || refreshError);
-  return null;
+  return refreshAuthToken(error ? 'getSession failed' : 'cached session is stale');
 };
 
 /**
@@ -30,7 +76,8 @@ export const getAuthToken = async (): Promise<string | null> => {
 export const fetchApi = async <T>(
   endpoint: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-  body?: any
+  body?: any,
+  allowRetry = true
 ): Promise<T> => {
   const token = await getAuthToken();
   if (!token) throw new Error("Authentication required. Please login first.");
@@ -45,6 +92,13 @@ export const fetchApi = async <T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401 && allowRetry) {
+      const refreshedToken = await refreshAuthToken('received 401 from backend');
+      if (refreshedToken && refreshedToken !== token) {
+        return fetchApi<T>(endpoint, method, body, false);
+      }
+    }
+
     let errorData;
     try { errorData = await response.json(); } catch { /* ignore */ }
 

@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Timer, ChevronLeft, ChevronRight, Check, RefreshCw, AlertCircle, Award } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getAnalysisHistory, generateQuiz, submitQuiz, QuizData } from "@/lib/api";
@@ -33,6 +43,8 @@ const KillerQuiz = () => {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [mcqAnswers, setMcqAnswers] = useState<Record<string, string>>({});
   const [essayAnswers, setEssayAnswers] = useState<Record<string, string>>({});
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const [confirmExitOpen, setConfirmExitOpen] = useState(false);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -83,16 +95,8 @@ const KillerQuiz = () => {
     setEssayAnswers(prev => ({ ...prev, [qNum.toString()]: text }));
   };
 
-  const handleSubmit = async () => {
+  const runSubmit = async () => {
     if (!quiz || !selectedAnalysis) return;
-    
-    // Validate all answered (optional, but good UX)
-    const mcqAnsweredCount = Object.keys(mcqAnswers).length;
-    const essayAnsweredCount = Object.keys(essayAnswers).filter(k => essayAnswers[k].trim() !== "").length;
-    
-    if (mcqAnsweredCount < quiz.multiple_choice.length || essayAnsweredCount < quiz.essay.length) {
-       if (!confirm("You have unanswered questions. Submit anyway?")) return;
-    }
 
     try {
       setIsSubmitting(true);
@@ -109,6 +113,21 @@ const KillerQuiz = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    if (!quiz) return;
+
+    const mcqAnsweredCount = Object.keys(mcqAnswers).length;
+    const essayAnsweredCount = Object.keys(essayAnswers).filter(k => essayAnswers[k].trim() !== "").length;
+    const hasUnanswered = mcqAnsweredCount < quiz.multiple_choice.length || essayAnsweredCount < quiz.essay.length;
+
+    if (hasUnanswered) {
+      setConfirmSubmitOpen(true);
+      return;
+    }
+
+    await runSubmit();
   };
 
   const renderDashboard = () => (
@@ -381,12 +400,7 @@ const KillerQuiz = () => {
         </div>
 
         <button 
-          onClick={() => {
-             if (confirm("Are you sure you want to exit? Your progress will be lost.")) {
-                setSelectedAnalysis(null);
-                setQuiz(null);
-             }
-          }}
+          onClick={() => setConfirmExitOpen(true)}
           className="absolute top-16 right-6 px-3 py-1.5 rounded-lg bg-background border border-border flex items-center text-xs font-medium hover:bg-destructive hover:text-white hover:border-destructive transition-colors shadow-lg z-50 text-muted-foreground"
         >
           Exit Quiz
@@ -401,6 +415,51 @@ const KillerQuiz = () => {
         selectedAnalysis ? 
            (isGenerating ? renderGenerating() : renderActiveQuiz()) 
         : renderDashboard()}
+
+      <AlertDialog open={confirmSubmitOpen} onOpenChange={setConfirmSubmitOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit with unanswered questions?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Some questions are still empty. You can go back to complete them, or submit now.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Review Answers</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setConfirmSubmitOpen(false);
+                await runSubmit();
+              }}
+            >
+              Submit Now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmExitOpen} onOpenChange={setConfirmExitOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Exit this quiz?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your current progress will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue Quiz</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmExitOpen(false);
+                setSelectedAnalysis(null);
+                setQuiz(null);
+              }}
+            >
+              Exit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };

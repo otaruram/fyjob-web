@@ -31,20 +31,20 @@ const EMAIL_ALERT_ITEMS: Array<{
 }> = [
   {
     key: "email_weekly_summary",
-    title: "Weekly performance summary",
-    description: "Receive a weekly recap of score trend, activity, and skill gaps.",
+    title: "Weekly summary",
+    description: "Recap of score trend, activity, and skill gaps.",
     icon: CalendarClock,
   },
   {
     key: "email_new_quiz",
-    title: "New quiz availability",
-    description: "Get notified when fresh practice questions are ready.",
+    title: "New quiz ready",
+    description: "Notify when fresh practice questions are available.",
     icon: BrainCircuit,
   },
   {
     key: "email_security_warnings",
-    title: "Security sign-in warnings",
-    description: "Alert emails for suspicious or unusual sign-in activity.",
+    title: "Security warning",
+    description: "Alert for suspicious sign-in activity.",
     icon: Shield,
   },
 ];
@@ -166,10 +166,9 @@ const Alerts = () => {
                 <div className="flex items-center gap-2 mb-4">
                   <Mail className="w-4 h-4 text-primary" />
                   <h2 className="font-semibold">Email Alerts</h2>
-                  <span className="terminal-chip ml-auto">ACS Email</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  New users start with all email alerts OFF. Turn on what you want, then press Save Alerts.
+                  Default semua OFF. Aktifkan yang dibutuhkan saja.
                 </p>
                 <div className="space-y-3 text-sm">
                   {EMAIL_ALERT_ITEMS.map((item) => {
@@ -179,7 +178,7 @@ const Alerts = () => {
                     return (
                       <div
                         key={item.key}
-                        className={`rounded-xl border p-3 sm:p-4 transition-colors ${
+                        className={`rounded-lg border p-3 transition-colors ${
                           enabled ? "border-primary/50 bg-primary/5" : "border-border bg-card/30"
                         }`}
                       >
@@ -217,7 +216,7 @@ const Alerts = () => {
               <div className="terminal-shell p-4 sm:p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <TriangleAlert className="w-4 h-4 text-yellow-500" />
-                  <h2 className="font-semibold">Threshold Alerts</h2>
+                  <h2 className="font-semibold">Threshold</h2>
                 </div>
                 <div className="space-y-4 text-sm">
                   <div>

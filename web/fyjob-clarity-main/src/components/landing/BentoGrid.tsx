@@ -66,7 +66,7 @@ const BentoGrid = () => (
             <Swords className="h-5 w-5 text-primary" />
             <span className="text-sm font-semibold text-primary">Killer Quiz Arena</span>
           </div>
-          <h3 className="text-lg font-bold text-foreground mb-2">10 MCQs + 5 Essays</h3>
+          <h3 className="text-lg font-bold text-foreground mb-2">5 MCQs + 5 Essays</h3>
           <p className="text-sm text-muted-foreground">
             AI-generated quizzes tailored to the exact job description.
           </p>

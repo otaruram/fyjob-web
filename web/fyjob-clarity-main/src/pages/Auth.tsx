@@ -84,30 +84,9 @@ const Auth = () => {
             </svg>
             {loading ? "Authenticating..." : "Continue with Google"}
           </Button>
-
-          <div className="mt-6 flex items-center gap-3">
-             <div className="h-px flex-1 bg-border" />
-             <span className="text-xs text-muted-foreground">or</span>
-             <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <div className="mt-6 space-y-4">
-            <input
-              type="email"
-              placeholder="you@company.com"
-              className="w-full h-11 rounded-lg border border-border bg-muted/50 px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              disabled={loading}
-            />
-            <Button
-              variant="hero"
-              size="lg"
-              className="w-full"
-              disabled={loading}
-              onClick={() => toast.error("Email/Password login is not configured yet. Please use Google.")}
-            >
-              {t('auth_submit_login')}
-            </Button>
-          </div>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Sign in cepat dan aman hanya via Google.
+          </p>
         </div>
 
         <div className="text-center mt-6">

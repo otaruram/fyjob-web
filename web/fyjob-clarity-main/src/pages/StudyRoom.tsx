@@ -144,7 +144,7 @@ const StudyRoom = () => {
               {history.map((h, i) => (
                  <motion.div 
                     {...anim(0.1 + (i * 0.05))} 
-                    key={h.id}
+                    key={`${h.id}-${h.created_at}-${i}`}
                     onClick={() => {
                        setSelectedAnalysis(h);
                        if (h.has_learning_path && loadedAnalysisId !== h.id) {
@@ -251,7 +251,7 @@ const StudyRoom = () => {
                         const done = completed.has(step.path_number);
                         return (
                           <motion.div
-                            key={step.path_number}
+                            key={`${loadedAnalysisId || selectedAnalysis?.id || "path"}-${step.path_number}-${step.topic}-${i}`}
                             {...anim(0.15 + i * 0.05)}
                             className={`relative pl-14 ${done ? "opacity-60" : ""}`}
                           >
@@ -290,7 +290,7 @@ const StudyRoom = () => {
                                   <div className="mt-4 pt-3 border-t border-border/50 flex flex-col gap-2">
                                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Recommended Resources</span>
                                      {step.resources.map((r, idx) => (
-                                       <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded-lg bg-background/40 hover:bg-background/80 border border-transparent hover:border-border transition-colors">
+                                       <div key={`${step.path_number}-${r.title || "resource"}-${idx}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded-lg bg-background/40 hover:bg-background/80 border border-transparent hover:border-border transition-colors">
                                           <div className="flex items-center gap-2">
                                              <div className="p-1.5 bg-card border border-border rounded text-muted-foreground shrink-0">
                                                 {resourceIcon(r.type)}

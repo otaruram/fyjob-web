@@ -19,6 +19,29 @@ MODEL_GEMINI_PRO = "gemini/gemini-2.5-pro"        # Pro users (future)
 MODEL_GEMINI_3_PRO = "gemini/gemini-3-pro-preview" # Admin only
 
 
+def _unwrap_code_block(content: str) -> str:
+    if "```json" in content:
+        return content.split("```json", 1)[1].split("```", 1)[0].strip()
+    if "```" in content:
+        return content.split("```", 1)[1].split("```", 1)[0].strip()
+    return content.strip()
+
+
+def _parse_json_content(content: str) -> Dict[str, Any]:
+    normalized = _unwrap_code_block(content)
+
+    try:
+        try:
+            from json_repair import loads as json_repair_loads
+            return json_repair_loads(normalized)
+        except ImportError:
+            logging.warning("json-repair not found, using standard json fallback")
+            return json.loads(normalized)
+    except Exception as e:
+        logging.error(f"Failed to parse LLM JSON response: {e}\nContent: {normalized[:500]}")
+        raise ValueError(f"LLM returned invalid JSON: {e}")
+
+
 def _get_api_key() -> str:
     key = get_secret("sumopod-api-key") or os.environ.get("SUMOPOD_API_KEY")
     if not key:
@@ -88,23 +111,5 @@ def call_llm_json(
     Handles markdown code blocks wrapping.
     """
     content = call_llm(messages, model, max_tokens, temperature)
-
-    # Strip markdown code blocks
-    if "```json" in content:
-        content = content.split("```json")[1].split("```")[0].strip()
-    elif "```" in content:
-        content = content.split("```")[1].split("```")[0].strip()
-    else:
-        content = content.strip()
-
-    try:
-        try:
-            from json_repair import loads as json_repair_loads
-            return json_repair_loads(content)
-        except ImportError:
-            logging.warning("json-repair not found, using standard json fallback")
-            return json.loads(content)
-    except Exception as e:
-        logging.error(f"Failed to parse LLM JSON response: {e}\nContent: {content[:500]}")
-        raise ValueError(f"LLM returned invalid JSON: {e}")
+    return _parse_json_content(content)
 

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
+import { FyjobLogo } from "@/components/FyjobLogo";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { Ecosystem } from "@/components/landing/Ecosystem";
 import { Features } from "@/components/landing/Features";
@@ -16,14 +17,8 @@ const Index = () => {
       {/* Nav */}
       <nav className="fixed top-0 inset-x-0 z-50 glass-strong">
         <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary w-6 h-6">
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-              <circle cx="12" cy="14" r="3"></circle>
-              <path d="M14 16l3 3"></path>
-            </svg>
-            <span>FY<span className="text-primary font-black">JOB</span></span>
+          <Link to="/" aria-label="FYJOB home">
+            <FyjobLogo />
           </Link>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
