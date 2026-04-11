@@ -7,7 +7,7 @@ import { Features } from "@/components/landing/Features";
 import { TechStack } from "@/components/landing/TechStack";
 
 const Index = () => {
-  const { language, toggleLanguage, t } = useTranslation();
+  const { t } = useTranslation();
   const { session } = useAuth();
   const isLoggedIn = Boolean(session);
 
@@ -26,12 +26,6 @@ const Index = () => {
             <span>FY<span className="text-primary font-black">JOB</span></span>
           </Link>
           <div className="flex items-center gap-6">
-            <button 
-              onClick={toggleLanguage} 
-              className="text-xs font-bold font-mono tracking-widest text-muted-foreground hover:text-foreground transition-colors uppercase border border-border px-2 py-1 rounded-md"
-            >
-              <span className={language === 'en' ? 'text-primary' : ''}>EN</span> / <span className={language === 'id' ? 'text-primary' : ''}>ID</span>
-            </button>
             <div className="flex items-center gap-3">
               {isLoggedIn ? (
                 <>
@@ -47,9 +41,6 @@ const Index = () => {
                 </>
               ) : (
                 <>
-                  <Link to="/auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors font-medium">
-                    {t('nav_signin')}
-                  </Link>
                   <Link
                     to="/auth"
                     className="text-sm font-bold bg-primary text-primary-foreground px-5 py-2.5 rounded-lg hover:shadow-glow transition-all"

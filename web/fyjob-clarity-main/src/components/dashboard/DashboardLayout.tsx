@@ -1,7 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import DashboardSidebar from "./DashboardSidebar";
 import { UjangChatPanel } from "./UjangChatPanel";
-import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
 import { LogOut } from "lucide-react";
 
@@ -10,7 +9,6 @@ interface DashboardLayoutProps {
 }
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
-  const { language, toggleLanguage } = useTranslation();
   const { user, signOut } = useAuth();
 
   return (
@@ -30,13 +28,6 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                 {user.email}
               </span>
             )}
-            {/* Language Switcher */}
-            <button
-               onClick={toggleLanguage} 
-              className="text-[10px] font-bold font-mono tracking-widest text-muted-foreground hover:text-foreground transition-colors uppercase border border-border px-1.5 sm:px-2 py-1.5 rounded-md"
-            >
-               <span className={language === 'en' ? 'text-primary' : ''}>EN</span> / <span className={language === 'id' ? 'text-primary' : ''}>ID</span>
-            </button>
             {/* Logout button */}
             <button
               onClick={signOut}
