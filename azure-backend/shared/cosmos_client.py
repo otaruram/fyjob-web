@@ -9,12 +9,15 @@ Credit System:
 - Admin users have unlimited credits
 """
 import os
+import io
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from azure.cosmos import CosmosClient, exceptions
+from azure.storage.blob import BlobServiceClient, ContentSettings
 
 # ─── Key Vault Setup ───
 _kv_client = None
@@ -75,20 +78,95 @@ def get_container(container_name: str):
     return db.get_container_client(container_name)
 
 
-# ─── Timezone Helper ───
-def _get_local_date(timezone_str: str) -> datetime:
-    """Get current date in user's local timezone using UTC offset mapping."""
-    tz_offsets = {
-        "Asia/Jakarta": 7, "Asia/Makassar": 8, "Asia/Jayapura": 9,
-        "Asia/Tokyo": 9, "Asia/Seoul": 9, "Asia/Shanghai": 8,
-        "Asia/Singapore": 8, "Asia/Kolkata": 5.5, "Asia/Dubai": 4,
-        "Europe/London": 0, "Europe/Berlin": 1, "Europe/Moscow": 3,
-        "America/New_York": -5, "America/Chicago": -6,
-        "America/Denver": -7, "America/Los_Angeles": -8,
-        "Australia/Sydney": 11, "Pacific/Auckland": 13,
-    }
-    offset_hours = tz_offsets.get(timezone_str, 7)  # Default: WIB (UTC+7)
-    return datetime.utcnow() + timedelta(hours=offset_hours)
+# ─── Azure Blob Storage Setup ───
+BLOB_CONTAINER_NAME = "cv-files"
+_blob_service_client = None
+
+
+def _get_blob_service():
+    """Get or create a cached BlobServiceClient."""
+    global _blob_service_client
+    if _blob_service_client:
+        return _blob_service_client
+    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING") or get_secret("azure-storage-connection-string")
+    if conn_str:
+        _blob_service_client = BlobServiceClient.from_connection_string(conn_str)
+    return _blob_service_client
+
+
+def upload_blob(blob_name: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+    """Upload a file to Azure Blob Storage and return its public URL.
+    
+    The container is set to public-blob access, so we return a direct URL
+    instead of generating SAS tokens — simpler and avoids expiry issues at scale.
+    """
+    service = _get_blob_service()
+    if not service:
+        raise RuntimeError("Azure Blob Storage not configured. Set AZURE_STORAGE_CONNECTION_STRING.")
+    
+    container_client = service.get_container_client(BLOB_CONTAINER_NAME)
+    blob_client = container_client.get_blob_client(blob_name)
+    
+    blob_client.upload_blob(
+        data,
+        overwrite=True,
+        content_settings=ContentSettings(
+            content_type=content_type,
+            content_disposition="inline"
+        ),
+    )
+    
+    return blob_client.url
+
+
+def delete_blob(blob_name: str):
+    """Delete a blob from storage. Silently ignores if not found."""
+    try:
+        service = _get_blob_service()
+        if not service:
+            return
+        container_client = service.get_container_client(BLOB_CONTAINER_NAME)
+        container_client.delete_blob(blob_name)
+    except Exception as e:
+        logging.warning(f"delete_blob failed for {blob_name}: {e}")
+
+
+def delete_user_blobs(user_id: str):
+    """Delete all blobs for a user (PDF + all page PNGs)."""
+    try:
+        service = _get_blob_service()
+        if not service:
+            return
+        container_client = service.get_container_client(BLOB_CONTAINER_NAME)
+        blobs = container_client.list_blobs(name_starts_with=f"{user_id}/")
+        for blob in blobs:
+            container_client.delete_blob(blob.name)
+    except Exception as e:
+        logging.warning(f"delete_user_blobs failed for {user_id}: {e}")
+
+
+# ─── Timezone Helpers ───
+def _get_user_tz(timezone_str: str) -> ZoneInfo:
+    """Resolve user's timezone, fallback to Asia/Jakarta."""
+    try:
+        return ZoneInfo(timezone_str or "Asia/Jakarta")
+    except Exception:
+        return ZoneInfo("Asia/Jakarta")
+
+
+def _parse_stored_datetime(value: str, user_tz: ZoneInfo) -> datetime:
+    """
+    Parse stored ISO datetime safely.
+    Naive datetimes are treated as UTC for backward compatibility.
+    """
+    try:
+        dt = datetime.fromisoformat(value)
+    except Exception:
+        return datetime(2000, 1, 1, tzinfo=user_tz)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(user_tz)
 
 
 # ─── User Operations ───
@@ -113,6 +191,8 @@ def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dic
             "timezone": timezone or "Asia/Jakarta",
             "raw_cv_text": "",
             "cv_filename": "",
+            "cv_blob_url": "",
+            "cv_page_images": [],
             "created_at": datetime.utcnow().isoformat()
         }
         container.create_item(doc)
@@ -130,15 +210,12 @@ def check_and_regen_credits(user_id: str, email: str = "") -> Dict[str, Any]:
     if user.get("role") == "admin":
         return user
 
-    user_tz = user.get("timezone", "Asia/Jakarta")
-    local_now = _get_local_date(user_tz)
+    user_tz = _get_user_tz(user.get("timezone", "Asia/Jakarta"))
+    local_now = datetime.now(user_tz)
     today_local = local_now.date()
 
     last_regen_str = user.get("last_regen_date", user.get("last_reset", "2000-01-01"))
-    try:
-        last_regen = datetime.fromisoformat(last_regen_str).date()
-    except (ValueError, TypeError):
-        last_regen = datetime(2000, 1, 1).date()
+    last_regen = _parse_stored_datetime(last_regen_str, user_tz).date()
 
     days_passed = (today_local - last_regen).days
 
@@ -168,31 +245,43 @@ def deduct_credit(user_id: str) -> int:
 
 def get_next_regen_time(user: Dict[str, Any]) -> str:
     """Calculate when user's next credit regenerates (local midnight)."""
-    user_tz = user.get("timezone", "Asia/Jakarta")
-    local_now = _get_local_date(user_tz)
-    # Next midnight in user's timezone
+    user_tz = _get_user_tz(user.get("timezone", "Asia/Jakarta"))
+    local_now = datetime.now(user_tz)
     tomorrow = local_now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     return tomorrow.isoformat()
 
 
 # ─── CV Operations ───
-def save_user_cv(user_id: str, cv_text: str, filename: str) -> Dict[str, Any]:
-    """Save/replace user CV. Only 1 CV allowed — old one is overwritten."""
+def save_user_cv(user_id: str, cv_text: str, filename: str,
+                 blob_url: str = "", page_images: List[str] = None) -> Dict[str, Any]:
+    """Save/replace user CV. Only 1 CV allowed — old one is overwritten.
+    
+    Now also stores blob_url (original PDF) and page_images (PNG URLs)
+    for the new visual preview system.
+    """
     container = get_container("Users")
     user = container.read_item(item=user_id, partition_key=user_id)
     user["raw_cv_text"] = cv_text
     user["cv_filename"] = filename
     user["cv_uploaded_at"] = datetime.utcnow().isoformat()
+    user["cv_blob_url"] = blob_url
+    user["cv_page_images"] = page_images or []
     container.upsert_item(user)
     return user
 
 
 def delete_user_cv(user_id: str) -> Dict[str, Any]:
-    """Delete user's CV data."""
+    """Delete user's CV data and associated blobs."""
+    # Delete blobs first
+    delete_user_blobs(user_id)
+    
     container = get_container("Users")
     user = container.read_item(item=user_id, partition_key=user_id)
     user["raw_cv_text"] = ""
     user["cv_filename"] = ""
+    user["cv_blob_url"] = ""
+    user["cv_page_images"] = []
     user.pop("cv_uploaded_at", None)
     container.upsert_item(user)
     return user
+

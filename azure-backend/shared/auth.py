@@ -21,26 +21,48 @@ CORS_HEADERS = {
 }
 
 # ─── JWKS Client (cached) for ES256 verification ───
-_jwks_client = None
+_jwks_clients = {}
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 
 
-def _get_jwks_client():
-    """Get or create a cached JWKS client for Supabase."""
-    global _jwks_client
-    if _jwks_client:
-        return _jwks_client
-    
-    url = SUPABASE_URL or os.environ.get("SUPABASE_URL", "") or get_secret("SUPABASE_URL") or "https://uwzrsqhnseepshkffaud.supabase.co"
-    if not url:
-        return None
-    
-    jwks_url = f"{url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+def _extract_issuer_from_token(token: str) -> Optional[str]:
+    """Read unverified issuer from JWT payload for dynamic JWKS routing."""
     try:
-        _jwks_client = PyJWKClient(jwks_url, cache_keys=True, lifespan=3600)
-        return _jwks_client
+        payload = jwt.decode(token, options={"verify_signature": False, "verify_exp": False, "verify_aud": False})
+        iss = payload.get("iss")
+        if isinstance(iss, str) and iss.startswith("https://"):
+            return iss.rstrip("/")
+    except Exception:
+        pass
+    return None
+
+
+def _get_jwks_client(issuer_url: Optional[str] = None):
+    """Get or create a cached JWKS client for Supabase issuer."""
+    issuer = (
+        issuer_url
+        or SUPABASE_URL
+        or os.environ.get("SUPABASE_URL", "")
+        or get_secret("SUPABASE_URL")
+        or "https://iplciyfnwwiyjtvrvqza.supabase.co"
+    ).rstrip("/")
+
+    if not issuer:
+        return None
+
+    if issuer in _jwks_clients:
+        return _jwks_clients[issuer]
+
+    # If issuer already ends with /auth/v1 (from JWT iss claim), don't duplicate the path
+    if issuer.endswith("/auth/v1"):
+        jwks_url = f"{issuer}/.well-known/jwks.json"
+    else:
+        jwks_url = f"{issuer}/auth/v1/.well-known/jwks.json"
+    try:
+        _jwks_clients[issuer] = PyJWKClient(jwks_url, cache_keys=True, lifespan=3600)
+        return _jwks_clients[issuer]
     except Exception as e:
-        logging.error(f"Failed to create JWKS client: {e}")
+        logging.error(f"Failed to create JWKS client for {issuer}: {e}")
         return None
 
 
@@ -52,7 +74,8 @@ def verify_jwt(token: str) -> Optional[Dict[str, Any]]:
       2. Fallback to HS256 with JWT secret (legacy projects)
     """
     # ── Strategy 1: ES256 via JWKS ──
-    jwks_client = _get_jwks_client()
+    issuer = _extract_issuer_from_token(token)
+    jwks_client = _get_jwks_client(issuer)
     if jwks_client:
         try:
             signing_key = jwks_client.get_signing_key_from_jwt(token)
@@ -60,7 +83,9 @@ def verify_jwt(token: str) -> Optional[Dict[str, Any]]:
                 token,
                 signing_key.key,
                 algorithms=["ES256"],
-                audience="authenticated"
+                audience="authenticated",
+                issuer=issuer if issuer else None,
+                options={"verify_iss": bool(issuer)}
             )
             return payload
         except jwt.ExpiredSignatureError:

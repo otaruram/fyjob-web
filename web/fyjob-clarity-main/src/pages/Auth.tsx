@@ -44,8 +44,14 @@ const Auth = () => {
         <div className="glass-strong rounded-2xl p-8 gradient-border animate-pulse-glow">
           {/* Logo */}
           <div className="text-center mb-8">
-             <h1 className="text-2xl font-bold text-foreground tracking-tight">
-              FY<span className="gradient-text">JOB</span>
+             <h1 className="text-2xl font-bold text-foreground tracking-tight flex items-center justify-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary w-8 h-8">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                <circle cx="12" cy="14" r="3"></circle>
+                <path d="M14 16l3 3"></path>
+              </svg>
+              <span>FY<span className="gradient-text">JOB</span></span>
              </h1>
              <p className="mt-3 text-muted-foreground text-sm">{t('auth_title_login')}</p>
           </div>

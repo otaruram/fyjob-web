@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Timer, ChevronLeft, ChevronRight, Check, Zap, RefreshCw, AlertCircle, Award } from "lucide-react";
+import { Timer, ChevronLeft, ChevronRight, Check, RefreshCw, AlertCircle, Award } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getAnalysisHistory, generateQuiz, submitQuiz, QuizData } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
@@ -115,7 +115,7 @@ const KillerQuiz = () => {
     <div className="flex flex-col items-center justify-center p-6 lg:p-10 font-sans text-foreground w-full min-h-[80vh]">
       <div className="glass rounded-xl p-8 max-w-2xl w-full">
         <h1 className="text-2xl lg:text-3xl font-bold tracking-tight mb-2">FAANG-Level Technical Screen</h1>
-        <p className="text-muted-foreground mb-8 text-sm">Select a job analysis to generate a tailored technical quiz. Costs 1 daily credit unless already generated.</p>
+        <p className="text-muted-foreground mb-8 text-sm">Select a job analysis. If quiz already exists, it opens instantly without regenerate.</p>
         
         {errorMsg && (
           <Alert variant="destructive" className="mb-6 bg-destructive/10 border-destructive/20 text-destructive">
@@ -141,11 +141,9 @@ const KillerQuiz = () => {
                  </div>
                </div>
                <div className="shrink-0 flex items-center gap-4">
-                  {job.has_quiz ? (
-                     <span className="text-xs bg-success/10 text-success px-2 py-1 rounded-md border border-success/20 font-medium">Available</span>
-                  ) : (
-                     <span className="text-xs text-muted-foreground flex items-center"><Zap className="w-3 h-3 mr-1" /> 1 Credit</span>
-                  )}
+                <span className="text-xs bg-success/10 text-success px-2 py-1 rounded-md border border-success/20 font-medium">
+                  {job.has_quiz ? "Open Saved Quiz" : "Generate Free"}
+                </span>
                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
                </div>
              </div>
@@ -347,7 +345,7 @@ const KillerQuiz = () => {
                        value={essayAnswers[currQ.question_number] || ''}
                        onChange={(e) => handleEssayChange(currQ.question_number, e.target.value)}
                        placeholder="Explain your approach, trade-offs, and architecture decisions here. Minimum 50 words recommended."
-                       className="min-h-[250px] p-5 text-sm/relaxed font-mono bg-zinc-950/80 border-border shadow-inner resize-y custom-scrollbar"
+                        className="min-h-[250px] p-5 text-sm/relaxed font-mono bg-zinc-950/90 border-border shadow-inner resize-y custom-scrollbar text-zinc-100 caret-zinc-100 placeholder:text-zinc-500 selection:bg-primary/40"
                     />
                     <p className="text-xs text-muted-foreground">This answer will be evaluated by the LLM based on technical accuracy, depth, and communication clarity.</p>
                   </div>

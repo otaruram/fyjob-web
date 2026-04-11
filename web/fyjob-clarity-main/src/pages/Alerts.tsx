@@ -3,6 +3,7 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Bell, ArrowLeft, Mail, TriangleAlert, CheckCircle2, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getAuthToken } from "@/lib/api";
+import { toast } from "sonner";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:7071";
 
@@ -26,7 +27,9 @@ const Alerts = () => {
   const [prefs, setPrefs] = useState<AlertPrefs>(DEFAULT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testEmailSent, setTestEmailSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,11 +67,44 @@ const Alerts = () => {
       });
       if (!res.ok) throw new Error("Save failed");
       setSaved(true);
+      toast.success("Alert settings saved");
       setTimeout(() => setSaved(false), 3000);
     } catch {
       setError("Failed to save. Please try again.");
+      toast.error("Failed to save alert settings");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    setTestingEmail(true);
+    setError(null);
+    setTestEmailSent(false);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE}/api/alert-settings`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...prefs, send_test_email: true }),
+      });
+      if (!res.ok) throw new Error("Test email failed");
+      const data = await res.json();
+      setTestEmailSent(Boolean(data?.email_test_sent));
+      if (!data?.email_test_sent) {
+        setError("Test email was requested but not sent. Check sender/domain verification in ACS.");
+        toast.error("Test email not sent. Check ACS sender/domain verification");
+      } else {
+        toast.success("Test email sent");
+      }
+    } catch {
+      setError("Failed to send test email.");
+      toast.error("Failed to send test email");
+    } finally {
+      setTestingEmail(false);
     }
   };
 
@@ -167,6 +203,11 @@ const Alerts = () => {
                     <CheckCircle2 className="w-4 h-4 text-green-500" />
                     <span className="text-green-500">Preferences saved!</span>
                   </>
+                ) : testEmailSent ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    <span className="text-green-500">Test email sent successfully.</span>
+                  </>
                 ) : (
                   <>
                     <Bell className="w-4 h-4" />
@@ -174,15 +215,25 @@ const Alerts = () => {
                   </>
                 )}
               </div>
-              <div className="flex flex-col sm:items-end gap-1">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="bg-primary hover:bg-primary/90 disabled:opacity-60 text-primary-foreground text-sm font-medium px-5 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
-                >
-                  {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Save Alerts
-                </button>
+              <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={handleSendTestEmail}
+                    disabled={testingEmail || saving}
+                    className="border border-border hover:bg-card/70 disabled:opacity-60 text-foreground text-sm font-medium px-5 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+                  >
+                    {testingEmail && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Send Test Email
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || testingEmail}
+                    className="bg-primary hover:bg-primary/90 disabled:opacity-60 text-primary-foreground text-sm font-medium px-5 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+                  >
+                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Save Alerts
+                  </button>
+                </div>
                 {error && <p className="text-xs text-red-500">{error}</p>}
               </div>
             </div>

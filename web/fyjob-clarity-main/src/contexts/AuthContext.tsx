@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
+const EXT_AUTH_BRIDGE_KEY = 'fyjob_auth_bridge_v1';
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -21,6 +23,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const syncExtensionBridge = (currentSession: Session | null) => {
+    try {
+      if (!currentSession?.access_token) {
+        localStorage.removeItem(EXT_AUTH_BRIDGE_KEY);
+        return;
+      }
+
+      localStorage.setItem(
+        EXT_AUTH_BRIDGE_KEY,
+        JSON.stringify({
+          access_token: currentSession.access_token,
+          refresh_token: currentSession.refresh_token || '',
+          expires_at: currentSession.expires_at || null,
+          email: currentSession.user?.email || '',
+          ts: Date.now(),
+        })
+      );
+    } catch {
+      // ignore bridge failures
+    }
+  };
+
   useEffect(() => {
     // 1. Subscribe to auth state changes FIRST — this is the primary source.
     //    onAuthStateChange fires INITIAL_SESSION on mount (replaces manual getSession),
@@ -32,6 +56,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Update state synchronously
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
+        syncExtensionBridge(currentSession);
 
         // Mark loading done on any auth event
         setLoading(false);
@@ -59,6 +84,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
+    syncExtensionBridge(null);
+
+    // Explicitly clear Supabase localStorage so the extension content script
+    // detects the logout immediately (instead of waiting for 8s polling cycle)
+    try {
+      const keys = Object.keys(localStorage);
+      keys.forEach(k => {
+        if (k.startsWith("sb-") && k.endsWith("-auth-token")) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (e) {
+      // Silently fail
+    }
+
+    // Force return to landing page after logout from any web UI entrypoint.
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      window.location.assign("/");
+    }
   };
 
   return (

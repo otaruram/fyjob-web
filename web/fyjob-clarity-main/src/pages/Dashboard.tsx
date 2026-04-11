@@ -31,6 +31,7 @@ const Dashboard = () => {
 
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [previewItem, setPreviewItem] = useState<UserStats['recent_analyses'][number] | null>(null);
 
   useEffect(() => {
     // Only fetch when session is confirmed
@@ -213,7 +214,7 @@ const Dashboard = () => {
                     {new Date(app.created_at).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => navigate('/application-history')}>View Details</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setPreviewItem(app)}>View Details</Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -228,6 +229,45 @@ const Dashboard = () => {
           </Table>
         </div>
       </motion.div>
+
+      {previewItem && (
+        <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPreviewItem(null)}>
+          <div
+            className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Preview</p>
+                <h3 className="text-lg font-semibold text-foreground mt-1">{previewItem.jobTitle}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{previewItem.portal}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setPreviewItem(null)}>Close</Button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-border bg-background/40 p-3">
+                <p className="text-xs text-muted-foreground">Match Score</p>
+                <p className={`text-xl font-semibold mt-1 ${getScoreColor(previewItem.score)}`}>{previewItem.score}%</p>
+              </div>
+              <div className="rounded-lg border border-border bg-background/40 p-3">
+                <p className="text-xs text-muted-foreground">Date</p>
+                <p className="text-sm font-medium mt-1 text-foreground">
+                  {new Date(previewItem.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-border bg-background/40 p-3">
+              <p className="text-xs text-muted-foreground mb-2">Feature Snapshot</p>
+              <p className="text-sm text-foreground leading-relaxed">
+                Learning Path: {previewItem.has_learning_path ? 'Ready' : 'Not Generated'}.
+                Quiz: {previewItem.has_quiz ? 'Ready' : 'Not Generated'}.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   </DashboardLayout>
   );

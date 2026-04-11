@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageCircle, Send, Sparkles, Briefcase, ChevronRight, Zap, RefreshCw } from "lucide-react";
+import { MessageCircle, Send, Sparkles, Briefcase, ChevronRight, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { chatWithUjang, getAnalysisHistory, getUserStats, UserStats } from "@/lib/api";
 
@@ -28,6 +28,14 @@ export const UjangChatPanel = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Auto-open if navigating from Extension Quick Match
+    const searchParams = new URL(window.location.href).searchParams;
+    if (searchParams.get("context") && !isOpen) {
+       setIsOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (isOpen) {
       loadContextData();
     }
@@ -45,7 +53,15 @@ export const UjangChatPanel = () => {
       ]);
       setStats(statsData);
       setAnalyses(histData);
-      if (histData.length > 0 && selectedAnalysisId === "none") {
+      // Auto-select context from URL if available
+      const searchParams = new URL(window.location.href).searchParams;
+      const contextId = searchParams.get("context");
+
+      if (contextId && histData.some(a => a.id === contextId)) {
+         setSelectedAnalysisId(contextId);
+         // Clean URL manually so it doesn't persist on subsequent local reloads
+         window.history.replaceState({}, '', window.location.pathname);
+      } else if (histData.length > 0 && selectedAnalysisId === "none") {
          setSelectedAnalysisId(histData[0].id);
       }
     } catch (err) {
@@ -123,10 +139,8 @@ export const UjangChatPanel = () => {
              </div>
              {stats !== null && (
                 <div className="text-[10px] font-mono bg-card px-2 py-1 rounded-md border border-border flex flex-col items-end">
-                  <span className="text-muted-foreground uppercase">Credits</span>
-                  <span className={stats.credits_remaining > 0 ? 'text-primary' : 'text-destructive'}>
-                     <Zap className="w-3 h-3 inline pb-0.5" /> {stats.credits_remaining}
-                  </span>
+                <span className="text-muted-foreground uppercase">Mode</span>
+                <span className="text-success">Free Chat</span>
                 </div>
              )}
           </div>
@@ -197,21 +211,18 @@ export const UjangChatPanel = () => {
                     handleSend();
                  }
               }}
-              placeholder={selectedAnalysisId !== "none" ? "Tanya soal job ini (1 Credit)..." : "Tanya bebas (1 Credit)..."} 
+              placeholder={selectedAnalysisId !== "none" ? "Tanya soal job ini..." : "Tanya bebas..."} 
               className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-colors resize-none h-12 max-h-32 custom-scrollbar shadow-inner"
               rows={1}
             />
             <button 
               onClick={handleSend}
-              disabled={!input.trim() || isTyping || (stats?.credits_remaining ?? 0) <= 0}
+              disabled={!input.trim() || isTyping}
               className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground disabled:opacity-50 shrink-0 hover:bg-primary/90 transition-all shadow-glow"
             >
               {isTyping ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-1" />}
             </button>
           </div>
-          {(stats?.credits_remaining ?? 0) <= 0 && (
-             <p className="text-[10px] text-destructive mt-2 text-center">Credit habis! Tunggu besok jam 00:00 untuk nambah 1 credit.</p>
-          )}
         </div>
       </SheetContent>
     </Sheet>

@@ -7,8 +7,8 @@ import logging
 import json
 from datetime import datetime
 from shared.auth import authenticate, error_response, success_response
-from shared.cosmos_client import get_container, check_and_regen_credits, deduct_credit
-from shared.llm_service import call_llm_json, MODEL_GEMINI_PRO
+from shared.cosmos_client import get_container, check_and_regen_credits
+from shared.llm_service import call_llm_json, MODEL_GEMINI_FLASH, MODEL_GEMINI_3_PRO
 from shared.prompts import ESSAY_EVAL_PROMPT
 
 
@@ -21,6 +21,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         user = check_and_regen_credits(user_id, email)
+        if not user.get("raw_cv_text"):
+            return error_response("CV is not uploaded yet. Please upload your CV in CV Manager first.", 403)
 
         body = req.get_json()
         analysis_id = body.get("analysisId")
@@ -88,7 +90,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             ]
 
             try:
-                eval_result = call_llm_json(messages, model=MODEL_GEMINI_PRO, max_tokens=2000)
+                model_to_use = MODEL_GEMINI_3_PRO if user.get("role") == "admin" else MODEL_GEMINI_FLASH
+                eval_result = call_llm_json(messages, model=model_to_use, max_tokens=2000)
                 essay_evaluations = eval_result.get("evaluations", [])
             except Exception as e:
                 logging.error(f"Essay eval LLM error: {e}")
@@ -125,11 +128,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         analysis["quiz_submitted_at"] = datetime.utcnow().isoformat()
         history_container.upsert_item(analysis)
 
-        remaining = deduct_credit(user_id)
-
         return success_response({
             "results": results,
-            "credits_remaining": remaining
+            "credits_remaining": user.get("credits_remaining", 0)
         })
 
     except Exception as e:

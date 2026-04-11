@@ -91,3 +91,18 @@ def send_weekly_summary(to: str, name: str, total_analyses: int, avg_score: int,
       <p><a href="https://fyjob.app/dashboard" style="color:#6366f1">Open Dashboard →</a></p>
     </div>"""
     return send_email(to, subject, html)
+
+
+def send_new_quiz_alert(to: str, job_title: str) -> bool:
+        subject = "FYJob Alert — New Quiz Is Ready"
+        html = f"""
+        <div style="font-family:sans-serif;max-width:480px;margin:auto">
+            <h2 style="margin-bottom:8px">Your Quiz is Ready</h2>
+            <p>We prepared a new killer quiz for this target role:</p>
+            <p style="font-size:16px"><strong>{job_title or 'Target Role'}</strong></p>
+            <p style="margin-top:16px">
+                Open FYJob dashboard to start practicing and improve your match score.
+            </p>
+            <p><a href="https://fyjob.app/dashboard/quiz" style="color:#2563eb">Open Killer Quiz →</a></p>
+        </div>"""
+        return send_email(to, subject, html)

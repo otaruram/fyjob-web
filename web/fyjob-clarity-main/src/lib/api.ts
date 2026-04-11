@@ -146,6 +146,9 @@ export interface CVPreview {
   text_length: number;
   uploaded_at: string;
   credits_remaining: number;
+  // v2: Blob Storage PNG preview
+  blob_url: string;
+  page_images: string[];
 }
 
 // ═══════════════════════════════════════════════════
@@ -163,6 +166,14 @@ export const getAnalysisHistory = (limit = 10, offset = 0) =>
     matchScore: number; created_at: string; gaps: string[];
     has_quiz: boolean; has_learning_path: boolean;
   }>>(`/api/history?limit=${limit}&offset=${offset}`, 'GET');
+
+/** DELETE /api/history */
+export const deleteAnalysisHistory = (analysisId: string) =>
+  fetchApi<{ message: string; deleted: { analysis: number; chats: number; activity: number }; analysisId: string }>(
+    '/api/history',
+    'DELETE',
+    { analysisId }
+  );
 
 /** POST /api/analyze */
 export const analyzeJob = (jobDescription: string, jobTitle?: string, portal?: string, model?: string) =>
@@ -212,11 +223,27 @@ export const generateLearningPath = (analysisId: string) =>
     '/api/generate-learning-path', 'POST', { analysisId }
   );
 
-/** POST /api/upload-cv — Upload/replace CV (1 per user) */
+/** POST /api/upload-cv — Upload/replace CV (1 per user)
+ * Supports two modes:
+ * - pdfBase64: full pipeline (PDF → PNG pages → Blob Storage)
+ * - cvText: legacy text-only (ATS Builder)
+ */
 export const uploadCV = (cvText: string, filename: string) =>
   fetchApi<{ message: string; filename: string; text_length: number; credits_remaining: number }>(
     '/api/upload-cv', 'POST', { cvText, filename }
   );
+
+/** POST /api/upload-cv — Upload PDF binary as base64 for full PNG preview pipeline */
+export const uploadCVPdf = (pdfBase64: string, filename: string) =>
+  fetchApi<{
+    message: string;
+    filename: string;
+    text_length: number;
+    pages: number;
+    blob_url: string;
+    page_images: string[];
+    credits_remaining: number;
+  }>('/api/upload-cv', 'POST', { pdfBase64, filename });
 
 /** GET /api/upload-cv — Preview user's CV */
 export const getCVPreview = () =>

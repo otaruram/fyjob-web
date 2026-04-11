@@ -23,6 +23,7 @@ const dictionary = {
     tech_desc: "Built on a bleeding-edge stack to guarantee zero lag and maximum ATS compliance.",
     feat_title: "Arsenal of Features",
     feat_desc: "Everything you need to secure that elite tech role.",
+    feat_free: "Free",
     feat_quick_title: "Quick Match",
     feat_quick_desc: "Instantly scrapes job descriptions and calculates match scores with missing keywords.",
     feat_ujang_title: "Ujang Persona",
@@ -33,6 +34,8 @@ const dictionary = {
     feat_quiz_desc: "10 multiple-choice and 5 essay questions at FAANG-level difficulty to test your readiness.",
     feat_cv_title: "ATS CV Generator",
     feat_cv_desc: "God-tier resume builder guaranteed to parse correctly through enterprise applicant tracking systems.",
+    feat_free_title: "Free Access",
+    feat_free_desc: "No subscription wall for core tools. Analyze jobs, train skills, and improve your profile for free.",
     
     // Auth
     auth_title_login: "Sign In to FYJOB",
@@ -120,6 +123,7 @@ const dictionary = {
     tech_desc: "Dibangun di atas teknologi mutakhir untuk menjamin nihil lag dan akurasi skor ATS maksimal.",
     feat_title: "Gudang Persenjataan Karir",
     feat_desc: "Semua fitur yang Anda butuhkan untuk merebut posisi tech elit.",
+    feat_free: "Gratis",
     feat_quick_title: "Sistem Quick Match",
     feat_quick_desc: "Mengekstrak deskripsi pekerjaan seketika dan menghitung skor kecocokan CV beserta kata kunci yang hilang.",
     feat_ujang_title: "Persona Ujang HR",
@@ -130,6 +134,8 @@ const dictionary = {
     feat_quiz_desc: "Simulasi sadis berisi soal pilihan ganda dan esai tingkat FAANG untuk menguji kesiapan mental Anda.",
     feat_cv_title: "Generator CV ATS",
     feat_cv_desc: "Mesin pencetak CV tingkat dewa yang dijamin terdeteksi sempurna oleh sistem ATS perusahaan korporat.",
+    feat_free_title: "Akses Gratis",
+    feat_free_desc: "Tanpa paywall untuk fitur inti. Analisis loker, latihan skill, dan tingkatkan profil Anda secara gratis.",
     
     // Auth
     auth_title_login: "Masuk Web Dasbor",

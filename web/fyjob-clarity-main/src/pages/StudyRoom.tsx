@@ -37,6 +37,7 @@ const StudyRoom = () => {
   const [history, setHistory] = useState<AnalysisHistory[]>([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisHistory | null>(null);
   const [learningPath, setLearningPath] = useState<LearningPathType | null>(null);
+  const [loadedAnalysisId, setLoadedAnalysisId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -72,6 +73,7 @@ const StudyRoom = () => {
       // If it exists on backend, it costs 0 credits. If it doesn't, it costs 1 credit.
       const res = await generateLearningPath(analysisId);
       setLearningPath(res.learning_path);
+      setLoadedAnalysisId(analysisId);
       // Reset completed
       setCompleted(new Set());
       
@@ -145,10 +147,11 @@ const StudyRoom = () => {
                     key={h.id}
                     onClick={() => {
                        setSelectedAnalysis(h);
-                       if (h.has_learning_path && learningPath?.paths[0]?.topic !== h.id) { // naive check
-                           handleLoadPath(h.id);
+                       if (h.has_learning_path && loadedAnalysisId !== h.id) {
+                         handleLoadPath(h.id);
                        } else if (!h.has_learning_path) {
-                           setLearningPath(null);
+                         setLearningPath(null);
+                         setLoadedAnalysisId(null);
                        }
                     }}
                     className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col ${selectedAnalysis?.id === h.id ? 'bg-primary/10 border-primary ring-1 ring-primary/30' : 'bg-card border-border hover:border-primary/50 text-muted-foreground'}`}
@@ -194,7 +197,7 @@ const StudyRoom = () => {
                        AI will analyze the job requirements for <span className="text-foreground font-medium">{selectedAnalysis.jobTitle}</span> and generate exactly 3 practical learning paths to fix your skill gaps.
                     </p>
                     <Button variant="hero" onClick={() => handleLoadPath(selectedAnalysis.id)} disabled={isGenerating}>
-                       <Zap className="w-4 h-4 mr-2" /> Generate Study Path (1 Credit)
+                        <Zap className="w-4 h-4 mr-2" /> Generate Study Path (Free)
                     </Button>
                  </motion.div>
               )}
