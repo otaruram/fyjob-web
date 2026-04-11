@@ -13,7 +13,7 @@ export const TechStack = ({ t }: { t: any }) => {
     },
   };
 
-  const item = {
+  const cardVariants = {
     hidden: { opacity: 0, y: 14 },
     show: {
       opacity: 1,
@@ -58,15 +58,15 @@ export const TechStack = ({ t }: { t: any }) => {
           viewport={{ once: true, amount: 0.2 }}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left"
         >
-           {stack.map((item, idx) => (
+           {stack.map((tech, idx) => (
              <motion.div
                key={idx}
-               variants={item}
+               variants={cardVariants}
                className="glass border-border p-5 rounded-2xl hover:border-primary/40 transition-colors"
              >
-               <item.icon className="h-6 w-6 text-muted-foreground mb-4" />
-               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">{item.title}</h3>
-               <p className="font-medium text-foreground text-sm leading-tight">{item.value}</p>
+               <tech.icon className="h-6 w-6 text-muted-foreground mb-4" />
+               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">{tech.title}</h3>
+               <p className="font-medium text-foreground text-sm leading-tight">{tech.value}</p>
              </motion.div>
            ))}
         </motion.div>
