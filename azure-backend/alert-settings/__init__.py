@@ -12,9 +12,9 @@ from shared.email_service import send_email
 
 
 DEFAULT_PREFS = {
-    "email_weekly_summary": True,
-    "email_new_quiz": True,
-    "email_security_warnings": True,
+    "email_weekly_summary": False,
+    "email_new_quiz": False,
+    "email_security_warnings": False,
     "threshold_low_score": 60,
     "daily_reminder_time": "20:00",
 }
@@ -100,31 +100,59 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             f for f in bool_fields
             if (not bool(old_prefs.get(f, False))) and bool(prefs.get(f, False))
         ]
+        enabled_notifications_sent = []
         if enabled_now and email:
-            labels = {
-                "email_weekly_summary": "Weekly Summary",
-                "email_new_quiz": "New Quiz Alerts",
-                "email_security_warnings": "Security Warnings",
+            email_templates = {
+                "email_weekly_summary": {
+                    "subject": "FYJob Alerts Enabled — Weekly Summary",
+                    "html": """
+                    <div style='font-family:sans-serif;max-width:480px;margin:auto'>
+                      <h2>Weekly Summary Enabled</h2>
+                      <p>Your weekly performance summary alert is now active.</p>
+                      <p>You'll receive a periodic recap of your FYJob progress.</p>
+                    </div>
+                    """,
+                },
+                "email_new_quiz": {
+                    "subject": "FYJob Alerts Enabled — New Quiz Availability",
+                    "html": """
+                    <div style='font-family:sans-serif;max-width:480px;margin:auto'>
+                      <h2>New Quiz Alerts Enabled</h2>
+                      <p>Your new quiz availability alert is now active.</p>
+                      <p>We'll notify you when a new quiz is ready to practice.</p>
+                    </div>
+                    """,
+                },
+                "email_security_warnings": {
+                    "subject": "FYJob Alerts Enabled — Security Sign-in Warnings",
+                    "html": """
+                    <div style='font-family:sans-serif;max-width:480px;margin:auto'>
+                      <h2>Security Warnings Enabled</h2>
+                      <p>Your security sign-in warning alert is now active.</p>
+                      <p>You'll receive an email when suspicious login activity is detected.</p>
+                    </div>
+                    """,
+                },
             }
-            enabled_list = ", ".join(labels.get(x, x) for x in enabled_now)
-            send_email(
-                to=email,
-                subject="FYJob Alerts Enabled",
-                html_body=f"""
-                <div style='font-family:sans-serif;max-width:480px;margin:auto'>
-                  <h2>Alerts Enabled</h2>
-                  <p>You have enabled these email alerts:</p>
-                  <p><strong>{enabled_list}</strong></p>
-                  <p>You can change these settings anytime from FYJob Alerts page.</p>
-                </div>
-                """,
-            )
+
+            for field in enabled_now:
+                template = email_templates.get(field)
+                if not template:
+                    continue
+                sent = send_email(
+                    to=email,
+                    subject=template["subject"],
+                    html_body=template["html"],
+                )
+                if sent:
+                    enabled_notifications_sent.append(field)
 
         _save_prefs(user_id, prefs)
         return success_response({
             "alert_prefs": prefs,
             "message": "Alert settings saved",
             "email_test_sent": email_test_sent,
+            "enabled_notifications_sent": enabled_notifications_sent,
         })
 
     return error_response("Method not allowed", 405)

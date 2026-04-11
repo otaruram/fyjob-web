@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import { Bell, ArrowLeft, Mail, TriangleAlert, CheckCircle2, Loader2 } from "lucide-react";
+import { Bell, ArrowLeft, Mail, TriangleAlert, CheckCircle2, Loader2, Shield, CalendarClock, BrainCircuit } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getAuthToken } from "@/lib/api";
 import { toast } from "sonner";
@@ -16,12 +16,38 @@ interface AlertPrefs {
 }
 
 const DEFAULT: AlertPrefs = {
-  email_weekly_summary: true,
-  email_new_quiz: true,
-  email_security_warnings: true,
+  email_weekly_summary: false,
+  email_new_quiz: false,
+  email_security_warnings: false,
   threshold_low_score: 60,
   daily_reminder_time: "20:00",
 };
+
+const EMAIL_ALERT_ITEMS: Array<{
+  key: keyof Pick<AlertPrefs, "email_weekly_summary" | "email_new_quiz" | "email_security_warnings">;
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  {
+    key: "email_weekly_summary",
+    title: "Weekly performance summary",
+    description: "Receive a weekly recap of score trend, activity, and skill gaps.",
+    icon: CalendarClock,
+  },
+  {
+    key: "email_new_quiz",
+    title: "New quiz availability",
+    description: "Get notified when fresh practice questions are ready.",
+    icon: BrainCircuit,
+  },
+  {
+    key: "email_security_warnings",
+    title: "Security sign-in warnings",
+    description: "Alert emails for suspicious or unusual sign-in activity.",
+    icon: Shield,
+  },
+];
 
 const Alerts = () => {
   const [prefs, setPrefs] = useState<AlertPrefs>(DEFAULT);
@@ -142,22 +168,48 @@ const Alerts = () => {
                   <h2 className="font-semibold">Email Alerts</h2>
                   <span className="terminal-chip ml-auto">ACS Email</span>
                 </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  New users start with all email alerts OFF. Turn on what you want, then press Save Alerts.
+                </p>
                 <div className="space-y-3 text-sm">
-                  {([
-                    ["email_weekly_summary", "Weekly performance summary"],
-                    ["email_new_quiz", "New quiz availability"],
-                    ["email_security_warnings", "Security sign-in warnings"],
-                  ] as [keyof AlertPrefs, string][]).map(([key, label]) => (
-                    <label key={key} className="flex items-center justify-between gap-3 cursor-pointer">
-                      <span>{label}</span>
-                      <input
-                        type="checkbox"
-                        checked={prefs[key] as boolean}
-                        onChange={() => toggle(key)}
-                        className="h-4 w-4 accent-primary"
-                      />
-                    </label>
-                  ))}
+                  {EMAIL_ALERT_ITEMS.map((item) => {
+                    const enabled = Boolean(prefs[item.key]);
+                    const Icon = item.icon;
+
+                    return (
+                      <div
+                        key={item.key}
+                        className={`rounded-xl border p-3 sm:p-4 transition-colors ${
+                          enabled ? "border-primary/50 bg-primary/5" : "border-border bg-card/30"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Icon className={`w-4 h-4 ${enabled ? "text-primary" : "text-muted-foreground"}`} />
+                              <p className="font-medium leading-5">{item.title}</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enabled}
+                            onClick={() => toggle(item.key)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
+                              enabled ? "bg-primary border-primary" : "bg-muted border-border"
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                                enabled ? "translate-x-5" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
