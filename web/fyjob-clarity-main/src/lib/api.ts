@@ -137,7 +137,8 @@ export interface UserStats {
   credits_remaining: number;
   max_credits: number | string;
   role: 'admin' | 'user';
-  plan?: 'free' | 'basic' | 'pro';
+  plan?: 'free' | 'basic' | 'pro' | 'admin';
+  plan_expires_at?: string | null;
   interview_access?: {
     quality: 'lite' | 'deep';
     speech_enabled: boolean;
@@ -456,3 +457,44 @@ export const adminAddUserCredits = (targetUserId: string, amount: number) =>
       amount,
     }
   );
+
+// ═══════════════════════════════════════════════════
+// Payment
+// ═══════════════════════════════════════════════════
+
+export interface PlanInfo {
+  id: 'free' | 'basic' | 'pro';
+  name: string;
+  price: number;
+  price_label: string;
+  subtitle: string;
+  features: string[];
+  highlighted?: boolean;
+}
+
+export interface PaymentStatus {
+  current_plan: 'free' | 'basic' | 'pro' | 'admin';
+  plan_expires_at?: string | null;
+  is_admin: boolean;
+  available_plans: PlanInfo[];
+}
+
+export interface CreateTransactionResult {
+  checkout_url: string;
+  transaction_id: string;
+  plan: string;
+  amount: number;
+}
+
+/** GET /api/payment — get current plan & available plans */
+export const getPaymentStatus = () =>
+  fetchApi<PaymentStatus>('/api/payment', 'GET');
+
+/** POST /api/payment action=create — create checkout transaction */
+export const createPaymentTransaction = (plan: 'basic' | 'pro', successUrl?: string, cancelUrl?: string) =>
+  fetchApi<CreateTransactionResult>('/api/payment', 'POST', {
+    action: 'create',
+    plan,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  });

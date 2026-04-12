@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, LogOut, Mic, Crown, Shield } from "lucide-react";
+import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, LogOut, Mic, Crown, Shield, Sparkles } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/lib/i18n";
@@ -47,8 +47,9 @@ const DashboardSidebar = () => {
       ],
     },
     {
-      label: "Configuration",
+      label: "Account",
       items: [
+        { title: "Upgrade Plan", url: "/dashboard/upgrade", icon: Sparkles },
         { title: t('side_settings'), url: "/dashboard/settings", icon: Settings },
         ...(isAdmin ? [{ title: "Admin Center", url: "/dashboard/admin", icon: Shield }] : []),
       ],

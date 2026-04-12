@@ -15,6 +15,7 @@ import Settings from "./pages/Settings.tsx";
 import Alerts from "./pages/Alerts.tsx";
 import Encryption from "./pages/Encryption.tsx";
 import AdminCenter from "./pages/AdminCenter.tsx";
+import Upgrade from "./pages/Upgrade.tsx";
 import { TranslationProvider } from "@/lib/i18n";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
@@ -101,6 +102,7 @@ const App = () => (
                 <Route path="/dashboard/settings/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
                 <Route path="/dashboard/settings/encryption" element={<ProtectedRoute><Encryption /></ProtectedRoute>} />
                 <Route path="/dashboard/admin" element={<ProtectedRoute><AdminCenter /></ProtectedRoute>} />
+                <Route path="/dashboard/upgrade" element={<ProtectedRoute><Upgrade /></ProtectedRoute>} />
                 
                 {/* Any unknown route → landing */}
                 <Route path="*" element={<Navigate to="/" replace />} />

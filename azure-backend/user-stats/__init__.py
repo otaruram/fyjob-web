@@ -5,12 +5,153 @@ GET /api/user-stats — Get user statistics, credits, and analysis summary
 import azure.functions as func
 import logging
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from shared.auth import authenticate, error_response, success_response
 from shared.cosmos_client import (
-    get_container, check_and_regen_credits, get_next_regen_time, MAX_CREDITS
+    get_container, check_and_regen_credits, get_next_regen_time, MAX_CREDITS, log_admin_audit
 )
 from shared.email_service import send_security_alert
+
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower().replace(" ", "")
+
+
+def _is_admin_user(user_doc: dict) -> bool:
+    email = _normalize_email(user_doc.get("email", ""))
+    return email == "okitr52@gmail.com"
+
+
+def _admin_overview():
+    users = get_container("Users")
+    history = get_container("AnalysisHistory")
+    interviews = get_container("InterviewSessions")
+
+    total = list(users.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    banned = list(users.query_items("SELECT VALUE COUNT(1) FROM c WHERE c.is_banned = true", enable_cross_partition_query=True))
+
+    analysis_count = list(history.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    interview_count = list(interviews.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    quiz_count = list(users.query_items(
+        "SELECT VALUE COUNT(1) FROM c WHERE IS_DEFINED(c.total_quiz_submissions) AND c.total_quiz_submissions > 0",
+        enable_cross_partition_query=True,
+    ))
+
+    usage = [
+        {"feature": "job_analysis", "count": int(analysis_count[0]) if analysis_count else 0},
+        {"feature": "interview_lite", "count": int(interview_count[0]) if interview_count else 0},
+        {"feature": "quiz_submit", "count": int(quiz_count[0]) if quiz_count else 0},
+    ]
+    usage_sorted = sorted(usage, key=lambda x: x["count"], reverse=True)
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    active_rows = list(users.query_items(
+        "SELECT VALUE COUNT(1) FROM c WHERE IS_DEFINED(c.last_activity_at) AND c.last_activity_at >= @cutoff",
+        parameters=[{"name": "@cutoff", "value": cutoff}],
+        enable_cross_partition_query=True,
+    ))
+
+    return {
+        "total_users": int(total[0]) if total else 0,
+        "banned_users": int(banned[0]) if banned else 0,
+        "active_last_7_days": int(active_rows[0]) if active_rows else 0,
+        "most_used_feature": usage_sorted[0] if usage_sorted else None,
+        "least_used_feature": usage_sorted[-1] if usage_sorted else None,
+    }
+
+
+def _admin_users(search: str = "", limit: int = 40):
+    users = get_container("Users")
+    safe_limit = max(1, min(100, int(limit or 40)))
+
+    query = (
+        f"SELECT TOP {safe_limit} c.id, c.email, c.role, c.credits_remaining, c.is_banned, "
+        "c.banned_reason, c.created_at, c.last_activity_at FROM c "
+    )
+    params = []
+    if search:
+        query += "WHERE CONTAINS(LOWER(c.email), @search) "
+        params.append({"name": "@search", "value": str(search).lower()})
+    query += "ORDER BY c.created_at DESC"
+
+    rows = list(users.query_items(
+        query=query,
+        parameters=params,
+        enable_cross_partition_query=True,
+    ))
+    return {"users": rows}
+
+
+def _admin_activity():
+    history = get_container("AnalysisHistory")
+    interviews = get_container("InterviewSessions")
+    users = get_container("Users")
+
+    analysis_count = list(history.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    interview_count = list(interviews.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    quiz_count = list(users.query_items(
+        "SELECT VALUE COUNT(1) FROM c WHERE IS_DEFINED(c.total_quiz_submissions) AND c.total_quiz_submissions > 0",
+        enable_cross_partition_query=True,
+    ))
+
+    usage = [
+        {"feature": "job_analysis", "count": int(analysis_count[0]) if analysis_count else 0},
+        {"feature": "interview_lite", "count": int(interview_count[0]) if interview_count else 0},
+        {"feature": "quiz_submit", "count": int(quiz_count[0]) if quiz_count else 0},
+    ]
+    usage_sorted = sorted(usage, key=lambda x: x["count"], reverse=True)
+    return {
+        "usage": usage_sorted,
+        "most_used": usage_sorted[0] if usage_sorted else None,
+        "least_used": usage_sorted[-1] if usage_sorted else None,
+    }
+
+
+def _admin_set_ban(admin_user_id: str, target_user_id: str, banned: bool, reason: str):
+    users = get_container("Users")
+    target = users.read_item(item=target_user_id, partition_key=target_user_id)
+    target["is_banned"] = bool(banned)
+    target["banned_reason"] = reason if banned else ""
+    target["banned_at"] = datetime.utcnow().isoformat() if banned else None
+    users.upsert_item(target)
+
+    log_admin_audit(
+        action="ban-user",
+        admin_user_id=admin_user_id,
+        payload={"target_user_id": target_user_id, "banned": bool(banned), "reason": reason},
+    )
+
+
+def _admin_add_credits(admin_user_id: str, target_user_id: str, amount: int):
+    users = get_container("Users")
+    target = users.read_item(item=target_user_id, partition_key=target_user_id)
+    if target.get("role") == "admin":
+        return {
+            "target_user_id": target_user_id,
+            "credits_remaining": target.get("credits_remaining", 999999),
+            "skipped": True,
+            "reason": "Target is admin",
+        }
+
+    safe_amount = max(0, int(amount or 0))
+    target["credits_remaining"] = int(target.get("credits_remaining", 0)) + safe_amount
+    users.upsert_item(target)
+
+    log_admin_audit(
+        action="add-credits",
+        admin_user_id=admin_user_id,
+        payload={
+            "target_user_id": target_user_id,
+            "amount": safe_amount,
+            "result_credits": target["credits_remaining"],
+        },
+    )
+
+    return {
+        "target_user_id": target_user_id,
+        "credits_remaining": target["credits_remaining"],
+        "added": safe_amount,
+    }
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -21,8 +162,54 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return err
 
     try:
-        # Get user with credit regen check
         user = check_and_regen_credits(user_id, email)
+
+        # Admin actions fallback endpoint (stable under /api/user-stats)
+        if req.method == "GET":
+            admin_action = (req.params.get("action") or "").strip().lower()
+            if admin_action in {"admin-overview", "admin-users", "admin-activity"}:
+                if not _is_admin_user(user):
+                    return error_response("Admin access required", 403)
+
+                if admin_action == "admin-overview":
+                    return success_response(_admin_overview())
+                if admin_action == "admin-users":
+                    search = (req.params.get("search") or "").strip().lower()
+                    limit = int(req.params.get("limit") or "40")
+                    return success_response(_admin_users(search, limit))
+                return success_response(_admin_activity())
+
+        if req.method == "POST":
+            try:
+                body = req.get_json()
+            except Exception:
+                return error_response("Invalid JSON body", 400)
+
+            action = str(body.get("action") or "").strip().lower()
+            if action in {"ban-user", "add-credits"}:
+                if not _is_admin_user(user):
+                    return error_response("Admin access required", 403)
+
+                if action == "ban-user":
+                    target_user_id = str(body.get("targetUserId") or "").strip()
+                    if not target_user_id:
+                        return error_response("targetUserId is required", 400)
+                    if target_user_id == user_id:
+                        return error_response("Admin cannot ban self", 400)
+                    banned = bool(body.get("banned", True))
+                    reason = str(body.get("reason") or "Policy violation").strip()[:200]
+                    _admin_set_ban(user_id, target_user_id, banned, reason)
+                    return success_response({"ok": True, "targetUserId": target_user_id, "banned": banned})
+
+                target_user_id = str(body.get("targetUserId") or "").strip()
+                amount = int(body.get("amount") or 0)
+                if not target_user_id:
+                    return error_response("targetUserId is required", 400)
+                if amount <= 0:
+                    return error_response("amount must be > 0", 400)
+                return success_response(_admin_add_credits(user_id, target_user_id, amount))
+
+        # Get user with credit regen check
         credits = user.get("credits_remaining", MAX_CREDITS)
 
         # Get analysis history
@@ -71,7 +258,23 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             for s, c in sorted(skill_gaps_map.items(), key=lambda x: x[1], reverse=True)[:5]
         ]
 
-        is_admin = user.get("role") == "admin"
+        is_admin = _is_admin_user(user)
+        # Derive plan with expiry check
+        raw_plan = str(user.get("plan") or "free").lower()
+        plan_expires_at = user.get("plan_expires_at")
+        if is_admin:
+            raw_plan = "admin"
+        elif raw_plan in ("basic", "pro") and plan_expires_at:
+            try:
+                from datetime import datetime as _dt
+                exp = _dt.fromisoformat(plan_expires_at)
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if exp < datetime.now(timezone.utc):
+                    raw_plan = "free"
+            except Exception:
+                pass
+        plan = raw_plan
 
         # ── Security email on first login of the day (if user opted in) ──────
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -95,6 +298,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "credits_remaining": credits,
             "max_credits": "∞" if is_admin else MAX_CREDITS,
             "role": user.get("role", "user"),
+            "plan": plan,
+            "plan_expires_at": plan_expires_at if plan in ("basic", "pro") else None,
+            "interview_access": {
+                "quality": "deep" if (is_admin or plan == "pro") else "lite",
+                "speech_enabled": bool(is_admin or plan == "pro"),
+            },
             "next_regen_time": get_next_regen_time(user),
             "total_analyses": total_analyses,
             "avg_match_score": avg_match_score,
