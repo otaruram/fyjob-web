@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Wallet, QrCode, Smartphone, Loader2, ArrowLeft, ShieldCheck } from "lucide-react";
+import { Wallet, QrCode, Smartphone, Loader2, ArrowLeft, ShieldCheck, Landmark, Clock } from "lucide-react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,14 @@ type PaymentMethodValue = "qris" | "gopay";
 const PAYMENT_METHODS: Array<{ value: PaymentMethodValue; label: string; icon: React.ReactNode; group: "ewallet" }> = [
   { value: "qris", label: "QRIS", icon: <QrCode className="h-4 w-4" />, group: "ewallet" },
   { value: "gopay", label: "GoPay", icon: <Smartphone className="h-4 w-4" />, group: "ewallet" },
+];
+
+const TBA_METHODS: Array<{ label: string; subtitle: string; icon: React.ReactNode }> = [
+  { label: "ShopeePay", subtitle: "Instant e-wallet / QR", icon: <Smartphone className="h-4 w-4" /> },
+  { label: "BNI VA", subtitle: "Virtual account bank", icon: <Landmark className="h-4 w-4" /> },
+  { label: "BRI VA", subtitle: "Virtual account bank", icon: <Landmark className="h-4 w-4" /> },
+  { label: "Permata VA", subtitle: "Virtual account bank", icon: <Landmark className="h-4 w-4" /> },
+  { label: "CIMB Niaga VA", subtitle: "Virtual account bank", icon: <Landmark className="h-4 w-4" /> },
 ];
 
 const PLAN_META = {
@@ -120,6 +128,24 @@ export default function Checkout() {
                   </button>
                 );
               })}
+              {TBA_METHODS.map((method) => (
+                <button
+                  key={method.label}
+                  type="button"
+                  disabled
+                  className="rounded-lg border border-border bg-card/40 px-3 py-2 text-left opacity-50 cursor-not-allowed"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm font-medium">
+                    {method.icon} {method.label}
+                    <Badge variant="outline" className="ml-auto text-[10px] px-1.5 py-0 border-muted-foreground/30">
+                      <Clock className="h-3 w-3 mr-0.5" /> TBA
+                    </Badge>
+                  </span>
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    {method.subtitle}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
 
