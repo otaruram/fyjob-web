@@ -13,6 +13,18 @@ const PLAN_ICONS: Record<string, React.ReactNode> = {
   pro: <Crown className="h-5 w-5 text-yellow-400" />,
 };
 
+const PAYMENT_METHOD_OPTIONS = [
+  { value: "qris", label: "QRIS" },
+  { value: "gopay", label: "GoPay" },
+  { value: "shopeepay", label: "ShopeePay" },
+  { value: "bni_va", label: "BNI VA" },
+  { value: "bri_va", label: "BRI VA" },
+  { value: "permata_va", label: "Permata VA" },
+  { value: "cimb_niaga_va", label: "CIMB Niaga VA" },
+] as const;
+
+type PaymentMethodValue = (typeof PAYMENT_METHOD_OPTIONS)[number]["value"];
+
 export default function Upgrade() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -21,6 +33,7 @@ export default function Upgrade() {
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>("qris");
 
   const paymentResult = searchParams.get("payment");
 
@@ -60,7 +73,8 @@ export default function Upgrade() {
       const result = await createPaymentTransaction(
         planId as "basic" | "pro",
         `${window.location.origin}/dashboard/upgrade?payment=success`,
-        `${window.location.origin}/dashboard/upgrade?payment=cancel`
+        `${window.location.origin}/dashboard/upgrade?payment=cancel`,
+        paymentMethod
       );
       if (result.checkout_url) {
         window.location.href = result.checkout_url;
@@ -135,6 +149,31 @@ export default function Upgrade() {
           Start free, upgrade kalau butuh interview coaching lebih dalam dan limit lebih tinggi.
         </p>
       </motion.div>
+
+      {!isAdmin && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.09 }}
+          className="rounded-xl border border-border bg-card/70 px-4 py-3"
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Metode Pembayaran</p>
+              <p className="text-xs text-muted-foreground">Pilih metode yang paling nyaman sebelum klik upgrade.</p>
+            </div>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethodValue)}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm min-w-[220px]"
+            >
+              {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        </motion.div>
+      )}
 
       {/* Current plan banner */}
       <motion.div
@@ -249,7 +288,7 @@ export default function Upgrade() {
 
       {/* Fine print */}
       <p className="text-xs text-muted-foreground text-center px-4">
-        Pembayaran melalui Louvin.dev · IDR · Automatic plan activation setelah pembayaran sukses.
+        Pembayaran melalui Louvin.dev ({PAYMENT_METHOD_OPTIONS.find((m) => m.value === paymentMethod)?.label || "QRIS"}) · IDR · Automatic plan activation setelah pembayaran sukses.
         Langganan berlaku 30 hari.
       </p>
     </div>

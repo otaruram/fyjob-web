@@ -515,10 +515,16 @@ export const getPaymentStatus = () =>
   fetchApi<PaymentStatus>('/api/payment', 'GET');
 
 /** POST /api/payment action=create — create checkout transaction */
-export const createPaymentTransaction = (plan: 'basic' | 'pro', successUrl?: string, cancelUrl?: string) =>
+export const createPaymentTransaction = (
+  plan: 'basic' | 'pro',
+  successUrl?: string,
+  cancelUrl?: string,
+  paymentType: 'qris' | 'gopay' | 'bni_va' | 'bri_va' | 'permata_va' | 'cimb_niaga_va' | 'shopeepay' = 'qris'
+) =>
   fetchApi<CreateTransactionResult>('/api/payment', 'POST', {
     action: 'create',
     plan,
+    paymentType,
     success_url: successUrl,
     cancel_url: cancelUrl,
   });
