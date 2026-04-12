@@ -21,6 +21,7 @@ from shared.cosmos_client import (
     get_container,
     get_secret,
     is_allowed_admin_email,
+    get_effective_plan,
 )
 from shared.llm_service import call_llm, MODEL_GEMINI_FLASH, MODEL_GEMINI_3_PRO
 
@@ -66,7 +67,7 @@ LANGUAGE_TO_VOICE = {
     "zh": os.environ.get("AZURE_SPEECH_TTS_VOICE_ZH", "zh-CN-XiaoxiaoNeural"),
 }
 
-DEFAULT_PLAN = os.environ.get("INTERVIEW_DEFAULT_PLAN", "basic").strip().lower() or "basic"
+DEFAULT_PLAN = os.environ.get("INTERVIEW_DEFAULT_PLAN", "free").strip().lower() or "free"
 
 INTERVIEW_PROFILE = {
     "free": {
@@ -133,7 +134,8 @@ def _resolve_interview_profile(user_doc: dict, email: str = ""):
     if _is_admin_user(user_doc, email):
         return INTERVIEW_PROFILE["admin"], "admin", True
 
-    plan = _normalize_plan(str(user_doc.get("plan") or DEFAULT_PLAN))
+    effective_plan = get_effective_plan(user_doc)
+    plan = _normalize_plan(effective_plan if effective_plan != "admin" else DEFAULT_PLAN)
     profile = INTERVIEW_PROFILE.get(plan, INTERVIEW_PROFILE["basic"])
     return profile, plan, False
 

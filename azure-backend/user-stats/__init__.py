@@ -8,7 +8,12 @@ import json
 from datetime import datetime, timezone, timedelta
 from shared.auth import authenticate, error_response, success_response
 from shared.cosmos_client import (
-    get_container, check_and_regen_credits, get_next_regen_time, MAX_CREDITS, log_admin_audit
+    get_container,
+    check_and_regen_credits,
+    get_next_regen_time,
+    log_admin_audit,
+    get_effective_plan,
+    get_plan_credit_cap,
 )
 from shared.email_service import send_security_alert
 
@@ -258,23 +263,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             for s, c in sorted(skill_gaps_map.items(), key=lambda x: x[1], reverse=True)[:5]
         ]
 
-        is_admin = _is_admin_user(user)
-        # Derive plan with expiry check
-        raw_plan = str(user.get("plan") or "free").lower()
+        plan = get_effective_plan(user)
+        is_admin = plan == "admin"
         plan_expires_at = user.get("plan_expires_at")
-        if is_admin:
-            raw_plan = "admin"
-        elif raw_plan in ("basic", "pro") and plan_expires_at:
-            try:
-                from datetime import datetime as _dt
-                exp = _dt.fromisoformat(plan_expires_at)
-                if exp.tzinfo is None:
-                    exp = exp.replace(tzinfo=timezone.utc)
-                if exp < datetime.now(timezone.utc):
-                    raw_plan = "free"
-            except Exception:
-                pass
-        plan = raw_plan
+        max_credits = "∞" if is_admin else get_plan_credit_cap(plan)
 
         # ── Security email on first login of the day (if user opted in) ──────
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -296,7 +288,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         return success_response({
             "credits_remaining": credits,
-            "max_credits": "∞" if is_admin else MAX_CREDITS,
+            "max_credits": max_credits,
             "role": user.get("role", "user"),
             "plan": plan,
             "plan_expires_at": plan_expires_at if plan in ("basic", "pro") else None,

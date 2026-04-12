@@ -57,6 +57,12 @@ DATABASE_NAME = "FypodDB"
 ADMIN_DATABASE_NAME = os.environ.get("COSMOS_ADMIN_DATABASE_NAME", "FypodAdminDB")
 ALLOWED_ADMIN_EMAIL = "okitr52@gmail.com"
 MAX_CREDITS = 5
+PLAN_CREDIT_CAPS = {
+    "free": 5,
+    "basic": 10,
+    "pro": 20,
+    "admin": 999999,
+}
 CREDIT_REGEN_PER_DAY = 1
 
 
@@ -204,6 +210,33 @@ def is_allowed_admin_email(email: str) -> bool:
     return _normalize_email(email) == ALLOWED_ADMIN_EMAIL
 
 
+def get_effective_plan(user: Dict[str, Any]) -> str:
+    """Resolve effective plan with admin override and expiry fallback."""
+    email = _normalize_email(user.get("email", ""))
+    role = str(user.get("role", "")).strip().lower()
+    if role == "admin" or is_allowed_admin_email(email):
+        return "admin"
+
+    plan = str(user.get("plan") or "free").strip().lower()
+    if plan in ("basic", "pro"):
+        exp_raw = user.get("plan_expires_at")
+        if exp_raw:
+            try:
+                expires = datetime.fromisoformat(exp_raw)
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                if expires < datetime.now(timezone.utc):
+                    return "free"
+            except Exception:
+                return "free"
+
+    return plan if plan in ("free", "basic", "pro") else "free"
+
+
+def get_plan_credit_cap(plan: str) -> int:
+    return int(PLAN_CREDIT_CAPS.get((plan or "free").strip().lower(), MAX_CREDITS))
+
+
 # ─── User Operations ───
 def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dict[str, Any]:
     """Get user from Users container, create if not exists."""
@@ -221,11 +254,11 @@ def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dic
             user["role"] = expected_role
             if expected_role == "admin":
                 user["credits_remaining"] = 999999
-            elif user.get("credits_remaining", 0) > MAX_CREDITS:
-                user["credits_remaining"] = MAX_CREDITS
+            elif user.get("credits_remaining", 0) > get_plan_credit_cap(get_effective_plan(user)):
+                user["credits_remaining"] = get_plan_credit_cap(get_effective_plan(user))
             changed = True
 
-        expected_plan = "pro" if expected_role == "admin" else "basic"
+        expected_plan = "pro" if expected_role == "admin" else "free"
         if user.get("plan") not in {"free", "basic", "pro"}:
             user["plan"] = expected_plan
             changed = True
@@ -248,8 +281,8 @@ def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dic
             "id": user_id,
             "email": normalized_email,
             "role": "admin" if is_admin else "user",
-            "plan": "pro" if is_admin else "basic",
-            "credits_remaining": 999999 if is_admin else MAX_CREDITS,
+            "plan": "pro" if is_admin else "free",
+            "credits_remaining": 999999 if is_admin else get_plan_credit_cap("free"),
             "last_regen_date": datetime.utcnow().isoformat(),
             "timezone": timezone or "Asia/Jakarta",
             "raw_cv_text": "",
@@ -270,7 +303,10 @@ def check_and_regen_credits(user_id: str, email: str = "") -> Dict[str, Any]:
     - Calculate how many days passed and add accordingly
     """
     user = get_or_create_user(user_id, email)
-    if user.get("role") == "admin":
+    effective_plan = get_effective_plan(user)
+    credit_cap = get_plan_credit_cap(effective_plan)
+
+    if effective_plan == "admin":
         return user
 
     user_tz = _get_user_tz(user.get("timezone", "Asia/Jakarta"))
@@ -282,13 +318,28 @@ def check_and_regen_credits(user_id: str, email: str = "") -> Dict[str, Any]:
 
     days_passed = (today_local - last_regen).days
 
+    changed = False
+
+    # Keep stored plan in sync when an old paid plan is expired
+    if effective_plan == "free" and str(user.get("plan") or "").lower() in ("basic", "pro"):
+        user["plan"] = "free"
+        user["plan_expires_at"] = None
+        changed = True
+
     if days_passed > 0:
         current_credits = user.get("credits_remaining", 0)
-        # Add +1 per day that passed, capped at MAX_CREDITS
-        new_credits = min(MAX_CREDITS, current_credits + (days_passed * CREDIT_REGEN_PER_DAY))
+        # Add +1 per day that passed, capped by plan
+        new_credits = min(credit_cap, current_credits + (days_passed * CREDIT_REGEN_PER_DAY))
         user["credits_remaining"] = new_credits
         user["last_regen_date"] = local_now.isoformat()
+        changed = True
 
+    # Clamp overflow if old data has higher credits than current plan cap
+    if int(user.get("credits_remaining", 0)) > credit_cap:
+        user["credits_remaining"] = credit_cap
+        changed = True
+
+    if changed:
         container = get_container("Users")
         container.upsert_item(user)
 

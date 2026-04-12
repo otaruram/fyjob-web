@@ -19,6 +19,7 @@ from shared.cosmos_client import get_container, get_secret, ALLOWED_ADMIN_EMAIL
 # ─── Louvin.dev config ───
 LOUVIN_BASE_URL = "https://api.louvin.dev"
 LOUVIN_SLUG = "fyjob"
+LOUVIN_API_KEY_FALLBACK = "lv_85812f4d450e4580a324eb4f9e8b7994"
 
 PLAN_PRICES = {
     "basic": {"amount": 29000, "currency": "IDR", "label": "Basic Plan – Rp29.000/bulan"},
@@ -32,7 +33,11 @@ PLAN_DURATION_DAYS = {
 
 
 def _get_louvin_key() -> str:
-    return get_secret("LOUVIN_API_KEY") or os.environ.get("LOUVIN_API_KEY", "")
+    return (
+        get_secret("LOUVIN_API_KEY")
+        or os.environ.get("LOUVIN_API_KEY", "")
+        or LOUVIN_API_KEY_FALLBACK
+    )
 
 
 def _normalize_email(email: str) -> str:
@@ -90,6 +95,7 @@ def _create_louvin_transaction(amount: int, currency: str, label: str, user_id: 
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
+            "x-api-key": api_key,
         },
         method="POST",
     )
