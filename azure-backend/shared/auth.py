@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Any, Optional
 import jwt
 from jwt import PyJWKClient
-from .cosmos_client import get_secret
+from .cosmos_client import get_secret, get_container
 import azure.functions as func
 
 # CORS headers used by all endpoints
@@ -150,6 +150,23 @@ def authenticate(req: func.HttpRequest):
             json.dumps({"error": "Invalid token payload"}),
             status_code=401, headers=CORS_HEADERS
         )
+
+    # Global access control: blocked users cannot access API endpoints.
+    try:
+        users = get_container("Users")
+        user_doc = users.read_item(item=user_id, partition_key=user_id)
+        if bool(user_doc.get("is_banned")):
+            return None, None, func.HttpResponse(
+                json.dumps({
+                    "error": "Account is blocked by admin",
+                    "reason": user_doc.get("banned_reason", "Policy violation")
+                }),
+                status_code=403,
+                headers=CORS_HEADERS,
+            )
+    except Exception:
+        # Ignore read failures here to avoid auth hard-fail during migration.
+        pass
 
     return user_id, email, None
 

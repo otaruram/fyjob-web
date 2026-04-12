@@ -223,6 +223,27 @@ powershell -ExecutionPolicy Bypass -File .\create-cosmos-containers.ps1
 - `AZURE_SPEECH_TTS_VOICE_EN`
 - `AZURE_SPEECH_TTS_VOICE_ZH`
 
+## Admin Center Notes
+
+### Admin endpoint
+- `GET/POST /api/admin-center`
+
+Supported admin actions:
+- `GET ?action=overview`: total users, banned users, active users (7 days), most/least used feature
+- `GET ?action=users&search=&limit=`: list users with role, remaining credits, ban status
+- `GET ?action=activity`: feature usage aggregate
+- `POST action=ban-user`: ban/unban specific user
+- `POST action=add-credits`: top up user credits/token
+
+### Admin-only Cosmos database
+- Database: `FypodAdminDB` (default)
+- Container: `AdminAuditLogs` (partition key: `/adminUserId`)
+
+Set optional env var if you need custom name:
+- `COSMOS_ADMIN_DATABASE_NAME`
+
+Audit log entries for admin actions are stored in this admin database.
+
 ### Interview endpoint
 `POST /api/interview-lite`
 

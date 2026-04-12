@@ -20,8 +20,9 @@ from shared.cosmos_client import (
     deduct_credits,
     get_container,
     get_secret,
+    is_allowed_admin_email,
 )
-from shared.llm_service import call_llm, MODEL_GEMINI_FLASH
+from shared.llm_service import call_llm, MODEL_GEMINI_FLASH, MODEL_GEMINI_3_PRO
 
 try:
     import redis
@@ -65,6 +66,77 @@ LANGUAGE_TO_VOICE = {
     "zh": os.environ.get("AZURE_SPEECH_TTS_VOICE_ZH", "zh-CN-XiaoxiaoNeural"),
 }
 
+DEFAULT_PLAN = os.environ.get("INTERVIEW_DEFAULT_PLAN", "basic").strip().lower() or "basic"
+
+INTERVIEW_PROFILE = {
+    "free": {
+        "quality": "lite",
+        "max_questions": 3,
+        "max_turns": 7,
+        "question_max_tokens": 240,
+        "summary_max_tokens": 260,
+        "speech_enabled": False,
+        "text_cost": max(1, TEXT_SESSION_COST),
+        "speech_cost": max(2, SPEECH_SESSION_COST),
+        "model": MODEL_GEMINI_FLASH,
+    },
+    "basic": {
+        "quality": "lite",
+        "max_questions": 4,
+        "max_turns": 9,
+        "question_max_tokens": 280,
+        "summary_max_tokens": 320,
+        "speech_enabled": False,
+        "text_cost": max(1, TEXT_SESSION_COST),
+        "speech_cost": max(2, SPEECH_SESSION_COST),
+        "model": MODEL_GEMINI_FLASH,
+    },
+    "pro": {
+        "quality": "deep",
+        "max_questions": 6,
+        "max_turns": 14,
+        "question_max_tokens": 560,
+        "summary_max_tokens": 520,
+        "speech_enabled": True,
+        "text_cost": max(1, TEXT_SESSION_COST),
+        "speech_cost": max(2, SPEECH_SESSION_COST),
+        "model": MODEL_GEMINI_FLASH,
+    },
+    "admin": {
+        "quality": "deep",
+        "max_questions": 8,
+        "max_turns": 20,
+        "question_max_tokens": 900,
+        "summary_max_tokens": 700,
+        "speech_enabled": True,
+        "text_cost": 0,
+        "speech_cost": 0,
+        "model": MODEL_GEMINI_3_PRO,
+    },
+}
+
+
+def _normalize_plan(value: str) -> str:
+    p = (value or "").strip().lower()
+    if p in INTERVIEW_PROFILE:
+        return p
+    return DEFAULT_PLAN if DEFAULT_PLAN in INTERVIEW_PROFILE else "basic"
+
+
+def _is_admin_user(user_doc: dict, email: str = "") -> bool:
+    role_admin = str(user_doc.get("role") or "").strip().lower() == "admin"
+    user_email = str(user_doc.get("email") or email or "").strip().lower().replace(" ", "")
+    return bool(role_admin or is_allowed_admin_email(user_email))
+
+
+def _resolve_interview_profile(user_doc: dict, email: str = ""):
+    if _is_admin_user(user_doc, email):
+        return INTERVIEW_PROFILE["admin"], "admin", True
+
+    plan = _normalize_plan(str(user_doc.get("plan") or DEFAULT_PLAN))
+    profile = INTERVIEW_PROFILE.get(plan, INTERVIEW_PROFILE["basic"])
+    return profile, plan, False
+
 
 def _utc_now_iso() -> str:
     return datetime.utcnow().isoformat()
@@ -107,16 +179,22 @@ def _hash_turn(session_id: str, answer_text: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _build_system_prompt(language: str, mode: str, context: str) -> str:
+def _build_system_prompt(language: str, mode: str, context: str, max_questions: int, quality: str) -> str:
     lang_hint = LANGUAGE_HINT.get(language, LANGUAGE_HINT["id"])
     mode_hint = MODE_HINT.get(mode, MODE_HINT["text"])
+    depth_instruction = (
+        "Keep feedback concise and practical. Avoid over-long explanations."
+        if quality == "lite"
+        else "Deliver deep technical follow-ups with stronger rationale and trade-off framing."
+    )
     return (
         "You are FYJOB Interview Lite. Ask technical interview questions only (no behavioral questions). "
-        f"The total interview has exactly {MAX_QUESTIONS_PER_SESSION} technical questions. "
+        f"The total interview has exactly {max_questions} technical questions. "
         "For each turn, always return this exact format:\n"
         "**Pertanyaan Interview:** [question text]\n"
         "**Petunjuk Jawaban Kuat:** [hint for a strong answer]\n\n"
         "Each question must be specific to the user's CV + selected analysis context and feel like real engineering interview drills.\n"
+        f"{depth_instruction}\n"
         f"{lang_hint}\n"
         f"{mode_hint}\n"
         "Candidate context:\n"
@@ -124,10 +202,10 @@ def _build_system_prompt(language: str, mode: str, context: str) -> str:
     )
 
 
-def _session_cost_by_mode(mode: str) -> int:
+def _session_cost_by_mode(mode: str, profile: dict) -> int:
     if (mode or "").strip().lower() == "speech":
-        return max(0, SPEECH_SESSION_COST)
-    return max(0, TEXT_SESSION_COST)
+        return int(profile.get("speech_cost", max(0, SPEECH_SESSION_COST)))
+    return int(profile.get("text_cost", max(0, TEXT_SESSION_COST)))
 
 
 def _load_analysis_context(user_id: str, analysis_id: str, user_doc: dict) -> str:
@@ -302,7 +380,12 @@ def _text_to_speech(text: str, language: str):
     return audio_base64
 
 
-def _stt_action(body: dict):
+def _stt_action(user_id: str, email: str, body: dict):
+    user = check_and_regen_credits(user_id, email)
+    profile, _plan, is_admin = _resolve_interview_profile(user, email)
+    if not is_admin and not bool(profile.get("speech_enabled", False)):
+        return error_response("Speech mode is available for Pro plan only", 403)
+
     audio_base64 = body.get("audioBase64")
     language = body.get("language", "id")
     content_type = body.get("contentType")
@@ -319,7 +402,12 @@ def _stt_action(body: dict):
     return success_response({"transcriptText": transcript})
 
 
-def _tts_action(body: dict):
+def _tts_action(user_id: str, email: str, body: dict):
+    user = check_and_regen_credits(user_id, email)
+    profile, _plan, is_admin = _resolve_interview_profile(user, email)
+    if not is_admin and not bool(profile.get("speech_enabled", False)):
+        return error_response("Speech mode is available for Pro plan only", 403)
+
     text = body.get("text")
     language = body.get("language", "id")
     if not text:
@@ -354,9 +442,19 @@ def _start_session(user_id: str, email: str, body: dict):
     if not user.get("raw_cv_text"):
         return error_response("CV is not uploaded yet. Please upload your CV in CV Manager first.", 403)
 
-    is_admin = user.get("role") == "admin"
+    profile, plan, is_admin = _resolve_interview_profile(user, email)
 
-    session_cost = _session_cost_by_mode(mode)
+    if mode == "speech" and not is_admin and not bool(profile.get("speech_enabled", False)):
+        return error_response("Speech mode is available for Pro plan only", 403)
+
+    max_questions = int(profile.get("max_questions", MAX_QUESTIONS_PER_SESSION))
+    max_turns = int(profile.get("max_turns", MAX_TURNS))
+    model_to_use = profile.get("model", MODEL_GEMINI_FLASH)
+    question_max_tokens = int(profile.get("question_max_tokens", 500))
+    summary_max_tokens = int(profile.get("summary_max_tokens", 450))
+    quality_mode = str(profile.get("quality", "lite"))
+
+    session_cost = _session_cost_by_mode(mode, profile)
 
     if not is_admin and int(user.get("credits_remaining", 0)) < session_cost:
         return error_response("Insufficient credits for interview session", 403)
@@ -374,20 +472,20 @@ def _start_session(user_id: str, email: str, body: dict):
         except Exception:
             pass
 
-    system_prompt = _build_system_prompt(language, mode, context)
+    system_prompt = _build_system_prompt(language, mode, context, max_questions=max_questions, quality=quality_mode)
     first_turn = call_llm(
         [
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": (
-                    f"Start technical question 1/{MAX_QUESTIONS_PER_SESSION} now. "
+                    f"Start technical question 1/{max_questions} now. "
                     "Use the required output format exactly."
                 ),
             },
         ],
-        model=MODEL_GEMINI_FLASH,
-        max_tokens=500,
+        model=model_to_use,
+        max_tokens=question_max_tokens,
         temperature=0.6,
     )
 
@@ -409,6 +507,13 @@ def _start_session(user_id: str, email: str, body: dict):
         "updated_at": now,
         "ended_at": None,
         "turn_count": 1,
+        "plan": plan,
+        "quality": quality_mode,
+        "max_questions": max_questions,
+        "max_turns": max_turns,
+        "model": model_to_use,
+        "question_max_tokens": question_max_tokens,
+        "summary_max_tokens": summary_max_tokens,
         "messages": [
             {"role": "assistant", "content": first_turn, "ts": now},
         ],
@@ -432,9 +537,12 @@ def _start_session(user_id: str, email: str, body: dict):
             "sessionId": session_id,
             "assistantResponse": first_turn,
             "turnCount": 1,
-            "maxQuestions": MAX_QUESTIONS_PER_SESSION,
+            "maxQuestions": max_questions,
             "sessionCost": session_cost,
             "credits_remaining": remaining,
+            "plan": plan,
+            "quality": quality_mode,
+            "speechEnabled": bool(profile.get("speech_enabled", False)),
         }
     )
 
@@ -449,7 +557,7 @@ def _turn_session(user_id: str, email: str, body: dict):
         return error_response("answerText/transcriptText is required", 400)
 
     user = check_and_regen_credits(user_id, email)
-    is_admin = user.get("role") == "admin"
+    _profile, _plan, is_admin = _resolve_interview_profile(user, email)
     sessions = get_container("InterviewSessions")
 
     try:
@@ -468,10 +576,16 @@ def _turn_session(user_id: str, email: str, body: dict):
     if session.get("status") != "active":
         return error_response("Session is not active", 400)
 
-    if int(session.get("turn_count", 0)) > MAX_QUESTIONS_PER_SESSION:
+    session_max_questions = int(session.get("max_questions", MAX_QUESTIONS_PER_SESSION))
+    session_max_turns = int(session.get("max_turns", MAX_TURNS))
+    session_model = session.get("model", MODEL_GEMINI_FLASH)
+    session_question_max_tokens = int(session.get("question_max_tokens", 500))
+    session_quality = str(session.get("quality", "lite"))
+
+    if int(session.get("turn_count", 0)) > session_max_questions:
         return error_response("Question limit reached. End this session and start a new one.", 400)
 
-    if not is_admin and int(session.get("turn_count", 0)) >= MAX_TURNS:
+    if not is_admin and int(session.get("turn_count", 0)) >= session_max_turns:
         return error_response("Max turns reached. End this session and start a new one.", 400)
 
     r = _redis_client()
@@ -498,7 +612,7 @@ def _turn_session(user_id: str, email: str, body: dict):
                         {
                             "assistantResponse": cached,
                             "turnCount": session.get("turn_count", 1),
-                            "maxQuestions": MAX_QUESTIONS_PER_SESSION,
+                            "maxQuestions": session_max_questions,
                             "completed": session.get("status") == "completed",
                             "cached": True,
                         }
@@ -511,9 +625,9 @@ def _turn_session(user_id: str, email: str, body: dict):
         history = session.get("messages", [])
 
         # If user just answered the final question, close question flow without generating question 6.
-        if current_question >= MAX_QUESTIONS_PER_SESSION:
+        if current_question >= session_max_questions:
             assistant_text = (
-                f"**Pertanyaan Interview:** Sesi technical interview selesai ({MAX_QUESTIONS_PER_SESSION}/{MAX_QUESTIONS_PER_SESSION}).\n"
+                f"**Pertanyaan Interview:** Sesi technical interview selesai ({session_max_questions}/{session_max_questions}).\n"
                 "**Petunjuk Jawaban Kuat:** Klik End Interview untuk melihat ringkasan kekuatan, gap, dan next action Anda."
             )
             history.extend(
@@ -537,14 +651,20 @@ def _turn_session(user_id: str, email: str, body: dict):
                 {
                     "assistantResponse": assistant_text,
                     "turnCount": current_question,
-                    "maxQuestions": MAX_QUESTIONS_PER_SESSION,
+                    "maxQuestions": session_max_questions,
                     "cached": False,
                     "completed": True,
                 }
             )
 
         context = _load_analysis_context(user_id, session.get("analysisId"), user)
-        system_prompt = _build_system_prompt(session.get("language", "id"), session.get("mode", "text"), context)
+        system_prompt = _build_system_prompt(
+            session.get("language", "id"),
+            session.get("mode", "text"),
+            context,
+            max_questions=session_max_questions,
+            quality=session_quality,
+        )
 
         next_question = current_question + 1
         messages = [{"role": "system", "content": system_prompt}]
@@ -556,7 +676,7 @@ def _turn_session(user_id: str, email: str, body: dict):
                 "role": "user",
                 "content": (
                     f"My previous answer: {answer_text}\n"
-                    f"Now ask technical question {next_question}/{MAX_QUESTIONS_PER_SESSION}. "
+                    f"Now ask technical question {next_question}/{session_max_questions}. "
                     "Use the required output format exactly."
                 ),
             }
@@ -564,13 +684,13 @@ def _turn_session(user_id: str, email: str, body: dict):
 
         assistant_text = call_llm(
             messages,
-            model=MODEL_GEMINI_FLASH,
-            max_tokens=500,
+            model=session_model,
+            max_tokens=session_question_max_tokens,
             temperature=0.6,
         )
         if not assistant_text or not assistant_text.strip():
             assistant_text = (
-                f"**Pertanyaan Interview:** Jelaskan bagaimana Anda memecah masalah teknis kompleks untuk pertanyaan {next_question}/{MAX_QUESTIONS_PER_SESSION}.\n"
+                f"**Pertanyaan Interview:** Jelaskan bagaimana Anda memecah masalah teknis kompleks untuk pertanyaan {next_question}/{session_max_questions}.\n"
                 "**Petunjuk Jawaban Kuat:** Gunakan struktur langkah, trade-off, dan metrik dampak."
             )
 
@@ -595,7 +715,7 @@ def _turn_session(user_id: str, email: str, body: dict):
             {
                 "assistantResponse": assistant_text,
                 "turnCount": session["turn_count"],
-                "maxQuestions": MAX_QUESTIONS_PER_SESSION,
+                "maxQuestions": session_max_questions,
                 "cached": False,
             }
         )
@@ -637,8 +757,8 @@ def _end_session(user_id: str, body: dict):
             {"role": "system", "content": "You are a FAANG interview coach. Keep response concise."},
             {"role": "user", "content": f"{summary_prompt}\n\n{transcript}"},
         ],
-        model=MODEL_GEMINI_FLASH,
-        max_tokens=450,
+        model=session.get("model", MODEL_GEMINI_FLASH),
+        max_tokens=int(session.get("summary_max_tokens", 450)),
         temperature=0.4,
     )
 
@@ -698,8 +818,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     if action == "end":
         return _end_session(user_id, body)
     if action == "stt":
-        return _stt_action(body)
+        return _stt_action(user_id, email, body)
     if action == "tts":
-        return _tts_action(body)
+        return _tts_action(user_id, email, body)
 
     return error_response("Invalid action. Use start, turn, end, stt, or tts.", 400)

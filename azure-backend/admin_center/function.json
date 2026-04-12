@@ -6,12 +6,8 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": [
-        "get",
-        "post",
-        "options"
-      ],
-      "route": "user-stats"
+      "methods": ["get", "post", "options"],
+      "route": "admincenter"
     },
     {
       "type": "http",

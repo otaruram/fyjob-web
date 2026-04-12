@@ -54,6 +54,8 @@ def get_secret(name: str) -> Optional[str]:
 # ─── Cosmos DB Setup ───
 _cosmos_client = None
 DATABASE_NAME = "FypodDB"
+ADMIN_DATABASE_NAME = os.environ.get("COSMOS_ADMIN_DATABASE_NAME", "FypodAdminDB")
+ALLOWED_ADMIN_EMAIL = "okitr52@gmail.com"
 MAX_CREDITS = 5
 CREDIT_REGEN_PER_DAY = 1
 
@@ -76,6 +78,31 @@ def get_container(container_name: str):
         raise RuntimeError("Cosmos DB not configured")
     db = client.get_database_client(DATABASE_NAME)
     return db.get_container_client(container_name)
+
+
+def get_admin_container(container_name: str):
+    """Get a Cosmos DB container client from admin-specific database."""
+    client = _get_cosmos()
+    if not client:
+        raise RuntimeError("Cosmos DB not configured")
+    db = client.get_database_client(ADMIN_DATABASE_NAME)
+    return db.get_container_client(container_name)
+
+
+def log_admin_audit(action: str, admin_user_id: str, payload: Dict[str, Any]):
+    """Write admin action audit trail into admin database."""
+    try:
+        container = get_admin_container("AdminAuditLogs")
+        doc = {
+            "id": f"{datetime.utcnow().timestamp()}-{admin_user_id}-{action}",
+            "adminUserId": admin_user_id,
+            "action": action,
+            "payload": payload or {},
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        container.create_item(doc)
+    except Exception as e:
+        logging.warning(f"Failed to write admin audit log: {e}")
 
 
 # ─── Azure Blob Storage Setup ───
@@ -169,23 +196,59 @@ def _parse_stored_datetime(value: str, user_tz: ZoneInfo) -> datetime:
     return dt.astimezone(user_tz)
 
 
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().replace(" ", "").lower()
+
+
+def is_allowed_admin_email(email: str) -> bool:
+    return _normalize_email(email) == ALLOWED_ADMIN_EMAIL
+
+
 # ─── User Operations ───
 def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dict[str, Any]:
     """Get user from Users container, create if not exists."""
     container = get_container("Users")
     try:
         user = container.read_item(item=user_id, partition_key=user_id)
+        # Enforce strict single-admin-email policy for existing users too.
+        normalized_email = _normalize_email(email or user.get("email", ""))
+        if normalized_email and user.get("email") != normalized_email:
+            user["email"] = normalized_email
+
+        expected_role = "admin" if is_allowed_admin_email(normalized_email) else "user"
+        changed = False
+        if user.get("role") != expected_role:
+            user["role"] = expected_role
+            if expected_role == "admin":
+                user["credits_remaining"] = 999999
+            elif user.get("credits_remaining", 0) > MAX_CREDITS:
+                user["credits_remaining"] = MAX_CREDITS
+            changed = True
+
+        expected_plan = "pro" if expected_role == "admin" else "basic"
+        if user.get("plan") not in {"free", "basic", "pro"}:
+            user["plan"] = expected_plan
+            changed = True
+        elif expected_role == "admin" and user.get("plan") != "pro":
+            user["plan"] = "pro"
+            changed = True
+
         # Update timezone if provided and different
         if timezone and user.get("timezone") != timezone:
             user["timezone"] = timezone
+            changed = True
+
+        if changed:
             container.upsert_item(user)
         return user
     except exceptions.CosmosResourceNotFoundError:
-        is_admin = email == "okitr52@gmail.com"
+        normalized_email = _normalize_email(email)
+        is_admin = is_allowed_admin_email(normalized_email)
         doc = {
             "id": user_id,
-            "email": email,
+            "email": normalized_email,
             "role": "admin" if is_admin else "user",
+            "plan": "pro" if is_admin else "basic",
             "credits_remaining": 999999 if is_admin else MAX_CREDITS,
             "last_regen_date": datetime.utcnow().isoformat(),
             "timezone": timezone or "Asia/Jakarta",

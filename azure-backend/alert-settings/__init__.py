@@ -30,6 +30,15 @@ def _get_or_create_prefs(user_id: str, email: str) -> dict:
         return DEFAULT_PREFS.copy()
 
 
+def _is_admin(user_id: str) -> bool:
+    try:
+        container = get_container("Users")
+        item = container.read_item(item=user_id, partition_key=user_id)
+        return item.get("role") == "admin"
+    except Exception:
+        return False
+
+
 def _save_prefs(user_id: str, prefs: dict):
     container = get_container("Users")
     try:
@@ -55,7 +64,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     # ── GET: return current prefs ────────────────────────────────────────────
     if req.method == "GET":
         prefs = _get_or_create_prefs(user_id, email)
-        return success_response({"alert_prefs": prefs})
+        return success_response({"alert_prefs": prefs, "is_admin": _is_admin(user_id)})
 
     # ── POST: save prefs ─────────────────────────────────────────────────────
     if req.method == "POST":
@@ -82,7 +91,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 prefs["daily_reminder_time"] = t
 
         email_test_sent = False
+        is_admin = _is_admin(user_id)
         test_email_to = str(body.get("test_email_to") or "").strip().lower()
+        if test_email_to and not is_admin:
+            return error_response("Only admin can set custom test email target", 403)
         if test_email_to and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", test_email_to):
             return error_response("Invalid test_email_to format", 400)
 
