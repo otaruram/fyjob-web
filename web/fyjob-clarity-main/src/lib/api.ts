@@ -1,6 +1,10 @@
 import { supabase } from './supabase';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const FALLBACK_API_BASE_URL = (
+  import.meta.env.VITE_API_FALLBACK_BASE_URL ||
+  'https://fypodku-g4f2avb0aaewcyaw.indonesiacentral-01.azurewebsites.net'
+).replace(/\/$/, '');
 
 const decodeJwtPayload = (token?: string | null) => {
   if (!token) return null;
@@ -82,14 +86,25 @@ export const fetchApi = async <T>(
   const token = await getAuthToken();
   if (!token) throw new Error("Authentication required. Please login first.");
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
+  const callWithBase = async (baseUrl: string) =>
+    fetch(`${baseUrl}${endpoint}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+
+  let response: Response;
+  try {
+    response = await callWithBase(API_BASE_URL || FALLBACK_API_BASE_URL);
+  } catch (networkErr) {
+    if (!API_BASE_URL || API_BASE_URL === FALLBACK_API_BASE_URL) {
+      throw networkErr;
+    }
+    response = await callWithBase(FALLBACK_API_BASE_URL);
+  }
 
   if (!response.ok) {
     if (response.status === 401 && allowRetry) {
@@ -122,6 +137,11 @@ export interface UserStats {
   credits_remaining: number;
   max_credits: number | string;
   role: 'admin' | 'user';
+  plan?: 'free' | 'basic' | 'pro';
+  interview_access?: {
+    quality: 'lite' | 'deep';
+    speech_enabled: boolean;
+  };
   next_regen_time: string;
   total_analyses: number;
   avg_match_score: number;
@@ -215,6 +235,9 @@ export interface InterviewStartResponse {
   maxQuestions?: number;
   sessionCost?: number;
   credits_remaining: number;
+  plan?: 'free' | 'basic' | 'pro' | 'admin';
+  quality?: 'lite' | 'deep';
+  speechEnabled?: boolean;
 }
 
 export interface InterviewTurnResponse {
@@ -228,6 +251,31 @@ export interface InterviewTurnResponse {
 export interface InterviewEndResponse {
   sessionId: string;
   summary: string;
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  credits_remaining: number;
+  is_banned?: boolean;
+  banned_reason?: string;
+  created_at?: string;
+  last_activity_at?: string;
+}
+
+export interface AdminOverview {
+  total_users: number;
+  banned_users: number;
+  active_last_7_days: number;
+  most_used_feature?: { feature: string; count: number } | null;
+  least_used_feature?: { feature: string; count: number } | null;
+}
+
+export interface AdminActivitySummary {
+  usage: Array<{ feature: string; count: number }>;
+  most_used?: { feature: string; count: number } | null;
+  least_used?: { feature: string; count: number } | null;
 }
 
 // ═══════════════════════════════════════════════════
@@ -372,3 +420,39 @@ export const ttsInterviewLite = (text: string, language: InterviewLanguage) =>
     text,
     language,
   });
+
+/** GET /api/user-stats?action=admin-overview */
+export const getAdminOverview = () =>
+  fetchApi<AdminOverview>('/api/user-stats?action=admin-overview', 'GET');
+
+/** GET /api/user-stats?action=admin-users */
+export const getAdminUsers = (search = '', limit = 30) =>
+  fetchApi<{ users: AdminUserRow[] }>(
+    `/api/user-stats?action=admin-users&search=${encodeURIComponent(search)}&limit=${limit}`,
+    'GET'
+  );
+
+/** GET /api/user-stats?action=admin-activity */
+export const getAdminActivity = () =>
+  fetchApi<AdminActivitySummary>('/api/user-stats?action=admin-activity', 'GET');
+
+/** POST /api/user-stats action=ban-user */
+export const adminSetUserBan = (targetUserId: string, banned: boolean, reason?: string) =>
+  fetchApi<{ ok: boolean; targetUserId: string; banned: boolean }>('/api/user-stats', 'POST', {
+    action: 'ban-user',
+    targetUserId,
+    banned,
+    reason,
+  });
+
+/** POST /api/user-stats action=add-credits */
+export const adminAddUserCredits = (targetUserId: string, amount: number) =>
+  fetchApi<{ target_user_id: string; credits_remaining: number; added?: number; skipped?: boolean; reason?: string }>(
+    '/api/user-stats',
+    'POST',
+    {
+      action: 'add-credits',
+      targetUserId,
+      amount,
+    }
+  );

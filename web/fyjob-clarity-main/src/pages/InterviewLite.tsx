@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   endInterviewLite,
   getAnalysisHistory,
+  getUserStats,
   startInterviewLite,
   turnInterviewLite,
   sttInterviewLite,
@@ -66,6 +67,8 @@ const InterviewLite = () => {
   const [selectedAnalysisId, setSelectedAnalysisId] = useState<string>("");
   const [language, setLanguage] = useState<InterviewLanguage>("id");
   const [mode, setMode] = useState<InterviewMode>("text");
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [qualityMode, setQualityMode] = useState<"lite" | "deep">("lite");
 
   const [messages, setMessages] = useState<InterviewMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -93,6 +96,10 @@ const InterviewLite = () => {
   useEffect(() => {
     const load = async () => {
       try {
+        const stats = await getUserStats();
+        setSpeechEnabled(Boolean(stats?.interview_access?.speech_enabled || stats?.role === "admin"));
+        setQualityMode((stats?.interview_access?.quality as "lite" | "deep") || (stats?.role === "admin" ? "deep" : "lite"));
+
         const data = await getAnalysisHistory(20, 0);
         const mapped = (data || []).map((h) => ({
           id: h.id,
@@ -225,6 +232,10 @@ const InterviewLite = () => {
 
   const startInterview = async () => {
     if (!selectedAnalysisId) return;
+    if (mode === "speech" && !speechEnabled) {
+      setError("Speech mode hanya untuk Pro/Admin plan.");
+      return;
+    }
     await enqueueRequest(async () => {
       setError("");
       setMessages([]);
@@ -358,6 +369,9 @@ const InterviewLite = () => {
                 ? `Progress: ${Math.min(turnCount, maxQuestions)}/${maxQuestions} technical questions`
                 : `Session cost: ${sessionCost ?? (mode === "speech" ? 3 : 2)} credits (${mode === "speech" ? "speech" : "text"} mode)`}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Interview quality: {qualityMode === "deep" ? "Deep Coach" : "Lite Coach"}
+            </p>
           </div>
         </motion.div>
 
@@ -386,14 +400,24 @@ const InterviewLite = () => {
 
             <div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Interaction Mode</p>
-              <Select value={mode} onValueChange={(v) => setMode(v as InterviewMode)}>
+              <Select
+                value={mode}
+                onValueChange={(v) => {
+                  const next = v as InterviewMode;
+                  if (next === "speech" && !speechEnabled) {
+                    setError("Speech mode hanya untuk Pro/Admin plan.");
+                    return;
+                  }
+                  setMode(next);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent>
                   {(["text", "speech"] as InterviewMode[]).map((m) => (
                     <SelectItem key={m} value={m}>
-                      {MODE_LABEL[m]}
+                      {m === "speech" && !speechEnabled ? `${MODE_LABEL[m]} (Pro/Admin)` : MODE_LABEL[m]}
                     </SelectItem>
                   ))}
                 </SelectContent>

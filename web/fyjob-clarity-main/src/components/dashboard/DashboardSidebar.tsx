@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, LogOut, Mic, Crown } from "lucide-react";
+import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, LogOut, Mic, Crown, Shield } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/lib/i18n";
@@ -10,10 +10,12 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 const DashboardSidebar = () => {
   const { state } = useSidebar();
   const { t } = useTranslation();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const navigate = useNavigate();
   const collapsed = state === "collapsed";
+  const isAllowedAdminEmail = (user?.email || "").trim().toLowerCase().replace(/\s+/g, "") === "okitr52@gmail.com";
   const [hasAnalysis, setHasAnalysis] = useState(false);
+  const isAdmin = isAllowedAdminEmail;
 
   useEffect(() => {
     const checkAnalysis = async () => {
@@ -48,6 +50,7 @@ const DashboardSidebar = () => {
       label: "Configuration",
       items: [
         { title: t('side_settings'), url: "/dashboard/settings", icon: Settings },
+        ...(isAdmin ? [{ title: "Admin Center", url: "/dashboard/admin", icon: Shield }] : []),
       ],
     },
   ];

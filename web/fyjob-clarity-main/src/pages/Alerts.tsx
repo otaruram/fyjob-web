@@ -51,6 +51,7 @@ const EMAIL_ALERT_ITEMS: Array<{
 
 const Alerts = () => {
   const [prefs, setPrefs] = useState<AlertPrefs>(DEFAULT);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [testEmailTo, setTestEmailTo] = useState("okitr52@gmail.com");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +70,7 @@ const Alerts = () => {
         if (res.ok) {
           const data = await res.json();
           setPrefs({ ...DEFAULT, ...data.alert_prefs });
+          setIsAdmin(Boolean(data?.is_admin));
         }
       } catch (e) {
         // silently use defaults if offline
@@ -116,7 +118,11 @@ const Alerts = () => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ...prefs, send_test_email: true, test_email_to: testEmailTo.trim() }),
+        body: JSON.stringify({
+          ...prefs,
+          send_test_email: true,
+          ...(isAdmin ? { test_email_to: testEmailTo.trim() } : {}),
+        }),
       });
       if (!res.ok) throw new Error("Test email failed");
       const data = await res.json();
@@ -287,13 +293,15 @@ const Alerts = () => {
               </div>
               <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto">
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <input
-                    type="email"
-                    value={testEmailTo}
-                    onChange={(e) => setTestEmailTo(e.target.value)}
-                    placeholder="Target test email"
-                    className="w-full sm:w-64 bg-card border border-border rounded-lg px-3 py-2 text-sm"
-                  />
+                  {isAdmin && (
+                    <input
+                      type="email"
+                      value={testEmailTo}
+                      onChange={(e) => setTestEmailTo(e.target.value)}
+                      placeholder="Target test email"
+                      className="w-full sm:w-64 bg-card border border-border rounded-lg px-3 py-2 text-sm"
+                    />
+                  )}
                   <button
                     onClick={handleSendTestEmail}
                     disabled={testingEmail || saving}
