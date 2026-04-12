@@ -286,6 +286,23 @@ def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dic
             user["timezone"] = timezone
             changed = True
 
+        # Retry welcome email if user is on trial but email was never sent
+        # (can happen if first API call had empty email in JWT)
+        if (
+            expected_role != "admin"
+            and normalized_email
+            and user.get("is_trial")
+            and not user.get("welcome_email_sent_at")
+        ):
+            try:
+                from shared.email_service import send_trial_welcome_email
+                send_trial_welcome_email(normalized_email, normalized_email)
+                user["welcome_email_sent_at"] = datetime.utcnow().isoformat()
+                changed = True
+                logging.info(f"Retry welcome email sent to {normalized_email}")
+            except Exception as exc:
+                logging.warning(f"Retry trial welcome email failed: {exc}")
+
         if changed:
             container.upsert_item(user)
         return user
@@ -316,6 +333,16 @@ def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dic
             try:
                 from shared.email_service import send_trial_welcome_email
                 send_trial_welcome_email(normalized_email, normalized_email)
+                # Mark email as sent so retry logic above won't double-send
+                container.patch_item(
+                    item=user_id,
+                    partition_key=user_id,
+                    patch_operations=[{
+                        "op": "add",
+                        "path": "/welcome_email_sent_at",
+                        "value": datetime.utcnow().isoformat()
+                    }]
+                )
             except Exception as exc:
                 logging.warning(f"Trial welcome email failed: {exc}")
         return doc
