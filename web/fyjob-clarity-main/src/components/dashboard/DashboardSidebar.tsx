@@ -43,6 +43,17 @@ const DashboardSidebar = () => {
     };
 
     loadPlanBadge();
+
+    const onFocus = () => {
+      loadPlanBadge();
+    };
+    const timer = window.setInterval(loadPlanBadge, 45000);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
   }, []);
 
   const navGroups = [
