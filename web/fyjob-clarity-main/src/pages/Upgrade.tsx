@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, Sparkles, Loader2, AlertCircle, Crown, Zap, ArrowRight } from "lucide-react";
+import { Check, Sparkles, Loader2, AlertCircle, Crown, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { getPaymentStatus, PaymentStatus, PlanInfo } from "@/lib/api";
+import { getPaymentStatus, createPaymentTransaction, PaymentStatus, PlanInfo } from "@/lib/api";
 
 const PLAN_ICONS: Record<string, React.ReactNode> = {
   free: <Zap className="h-5 w-5 text-muted-foreground" />,
@@ -14,12 +14,12 @@ const PLAN_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function Upgrade() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
   const [status, setStatus] = useState<PaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const paymentResult = searchParams.get("payment");
@@ -53,9 +53,28 @@ export default function Upgrade() {
     load();
   }, []);
 
-  const handleCheckout = (planId: string) => {
+  const handleCheckout = async (planId: string) => {
     if (planId === "free") return;
-    navigate(`/dashboard/checkout?plan=${planId}`);
+    setCheckoutLoading(planId);
+    try {
+      const result = await createPaymentTransaction(
+        planId as "basic" | "pro",
+        `${window.location.origin}/dashboard/upgrade?payment=success`,
+        `${window.location.origin}/dashboard/upgrade?payment=cancel`
+      );
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      } else {
+        throw new Error("Checkout URL tidak tersedia");
+      }
+    } catch (e: any) {
+      toast({
+        title: "Gagal membuat transaksi",
+        description: e.message || "Coba lagi nanti",
+        variant: "destructive",
+      });
+      setCheckoutLoading(null);
+    }
   };
 
   if (loading) {
@@ -108,19 +127,6 @@ export default function Upgrade() {
         </p>
       </motion.div>
 
-      {!isAdmin && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.09 }}
-          className="rounded-xl border border-border bg-card/70 px-4 py-3"
-        >
-          <p className="text-sm text-muted-foreground">
-            Langkah selanjutnya: pilih paket di bawah, lalu kamu akan diarahkan ke halaman checkout khusus untuk memilih metode pembayaran fleksibel.
-          </p>
-        </motion.div>
-      )}
-
       {/* Current plan banner */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -158,6 +164,7 @@ export default function Upgrade() {
         {plans.map((plan, idx) => {
           const isCurrent = plan.id === currentPlan || (isAdmin && plan.id === "pro");
           const isHighlighted = plan.highlighted;
+          const isLoadingThis = checkoutLoading === plan.id;
 
           return (
             <motion.div
@@ -216,9 +223,13 @@ export default function Upgrade() {
                     size="sm"
                     variant={isHighlighted ? "default" : "outline"}
                     className="w-full"
+                    disabled={!!checkoutLoading}
                     onClick={() => handleCheckout(plan.id)}
                   >
-                    <ArrowRight className="h-4 w-4 mr-2" /> Lanjut ke Checkout
+                    {isLoadingThis ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
+                    {isLoadingThis ? "Membuka checkout..." : `Upgrade ke ${plan.name}`}
                   </Button>
                 )}
               </div>
@@ -229,7 +240,7 @@ export default function Upgrade() {
 
       {/* Fine print */}
       <p className="text-xs text-muted-foreground text-center px-4">
-        Pembayaran melalui Louvin.dev · metode fleksibel di halaman checkout · Automatic plan activation setelah pembayaran sukses.
+        Pembayaran melalui Louvin.dev · IDR · Automatic plan activation setelah pembayaran sukses.
         Langganan berlaku 30 hari.
       </p>
     </div>

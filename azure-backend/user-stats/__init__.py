@@ -349,6 +349,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 logging.warning(f"Security email skipped: {e}")
 
         return success_response({
+            "email": user.get("email", ""),
             "credits_remaining": credits,
             "max_credits": max_credits,
             "role": user.get("role", "user"),

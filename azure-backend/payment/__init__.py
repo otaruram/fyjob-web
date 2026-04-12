@@ -29,7 +29,7 @@ PLAN_PRICES = {
     "pro":   {"amount": 79000, "currency": "IDR", "label": "Pro Plan – Rp79.000/bulan"},
 }
 
-SUPPORTED_PAYMENT_TYPES = {"qris", "gopay"
+SUPPORTED_PAYMENT_TYPES = {"qris", "gopay"}
 
 PLAN_DURATION_DAYS = {
     "basic": 30,
