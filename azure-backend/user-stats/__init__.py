@@ -30,17 +30,10 @@ def _is_admin_user(user_doc: dict) -> bool:
     return email == "okitr52@gmail.com"
 
 
-def _admin_overview():
-    users = get_container("Users")
-    history = get_container("AnalysisHistory")
-    interviews = get_container("InterviewSessions")
-
-    total = list(users.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
-    banned = list(users.query_items("SELECT VALUE COUNT(1) FROM c WHERE c.is_banned = true", enable_cross_partition_query=True))
-
-    analysis_count = list(history.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
-    interview_count = list(interviews.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
-    quiz_count = list(users.query_items(
+def _build_feature_usage(history_container, interview_container, users_container):
+    analysis_count = list(history_container.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    interview_count = list(interview_container.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    quiz_count = list(users_container.query_items(
         "SELECT VALUE COUNT(1) FROM c WHERE IS_DEFINED(c.total_quiz_submissions) AND c.total_quiz_submissions > 0",
         enable_cross_partition_query=True,
     ))
@@ -50,7 +43,18 @@ def _admin_overview():
         {"feature": "interview_lite", "count": int(interview_count[0]) if interview_count else 0},
         {"feature": "quiz_submit", "count": int(quiz_count[0]) if quiz_count else 0},
     ]
-    usage_sorted = sorted(usage, key=lambda x: x["count"], reverse=True)
+    return sorted(usage, key=lambda x: x["count"], reverse=True)
+
+
+def _admin_overview():
+    users = get_container("Users")
+    history = get_container("AnalysisHistory")
+    interviews = get_container("InterviewSessions")
+
+    total = list(users.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
+    banned = list(users.query_items("SELECT VALUE COUNT(1) FROM c WHERE c.is_banned = true", enable_cross_partition_query=True))
+
+    usage_sorted = _build_feature_usage(history, interviews, users)
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     active_rows = list(users.query_items(
@@ -104,19 +108,7 @@ def _admin_activity():
     interviews = get_container("InterviewSessions")
     users = get_container("Users")
 
-    analysis_count = list(history.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
-    interview_count = list(interviews.query_items("SELECT VALUE COUNT(1) FROM c", enable_cross_partition_query=True))
-    quiz_count = list(users.query_items(
-        "SELECT VALUE COUNT(1) FROM c WHERE IS_DEFINED(c.total_quiz_submissions) AND c.total_quiz_submissions > 0",
-        enable_cross_partition_query=True,
-    ))
-
-    usage = [
-        {"feature": "job_analysis", "count": int(analysis_count[0]) if analysis_count else 0},
-        {"feature": "interview_lite", "count": int(interview_count[0]) if interview_count else 0},
-        {"feature": "quiz_submit", "count": int(quiz_count[0]) if quiz_count else 0},
-    ]
-    usage_sorted = sorted(usage, key=lambda x: x["count"], reverse=True)
+    usage_sorted = _build_feature_usage(history, interviews, users)
     return {
         "usage": usage_sorted,
         "most_used": usage_sorted[0] if usage_sorted else None,
@@ -230,6 +222,92 @@ def _admin_reset_non_admin_users(admin_user_id: str, trial_days: int = 7):
     }
 
 
+def _handle_admin_get_action(req: func.HttpRequest, user: dict):
+    admin_action = (req.params.get("action") or "").strip().lower()
+    if admin_action not in {"admin-overview", "admin-users", "admin-activity"}:
+        return None
+
+    if not _is_admin_user(user):
+        return error_response("Admin access required", 403)
+
+    if admin_action == "admin-overview":
+        return success_response(_admin_overview())
+    if admin_action == "admin-users":
+        search = (req.params.get("search") or "").strip().lower()
+        limit = int(req.params.get("limit") or "40")
+        return success_response(_admin_users(search, limit))
+    return success_response(_admin_activity())
+
+
+def _handle_admin_post_action(body: dict, user: dict, user_id: str):
+    action = str(body.get("action") or "").strip().lower()
+
+    if action in {"ban-user", "add-credits"}:
+        if not _is_admin_user(user):
+            return error_response("Admin access required", 403)
+
+        if action == "ban-user":
+            target_user_id = str(body.get("targetUserId") or "").strip()
+            if not target_user_id:
+                return error_response("targetUserId is required", 400)
+            if target_user_id == user_id:
+                return error_response("Admin cannot ban self", 400)
+            banned = bool(body.get("banned", True))
+            reason = str(body.get("reason") or "Policy violation").strip()[:200]
+            _admin_set_ban(user_id, target_user_id, banned, reason)
+            return success_response({"ok": True, "targetUserId": target_user_id, "banned": banned})
+
+        target_user_id = str(body.get("targetUserId") or "").strip()
+        amount = int(body.get("amount") or 0)
+        if not target_user_id:
+            return error_response("targetUserId is required", 400)
+        if amount <= 0:
+            return error_response("amount must be > 0", 400)
+        return success_response(_admin_add_credits(user_id, target_user_id, amount))
+
+    if action == "reset-non-admin-users":
+        if not _is_admin_user(user):
+            return error_response("Admin access required", 403)
+
+        confirm = str(body.get("confirm") or "").strip().upper()
+        if confirm != "RESET_NON_ADMIN_USERS":
+            return error_response("confirm must be RESET_NON_ADMIN_USERS", 400)
+
+        trial_days = int(body.get("trialDays") or 7)
+        return success_response(_admin_reset_non_admin_users(user_id, trial_days))
+
+    return None
+
+
+def _build_plan_expiry_notice_and_key(plan: str, plan_expires_at: str):
+    if plan not in ("basic", "pro") or not plan_expires_at:
+        return None, None
+
+    try:
+        exp_dt = datetime.fromisoformat(plan_expires_at)
+        if exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        now_dt = datetime.now(timezone.utc)
+        if exp_dt <= now_dt:
+            return None, None
+
+        delta = exp_dt - now_dt
+        total_hours = int(delta.total_seconds() // 3600)
+        days_left = max(0, total_hours // 24)
+        if delta > timedelta(days=7):
+            return None, None
+
+        local_exp = exp_dt.astimezone(timezone(timedelta(hours=7)))
+        notice = (
+            f"Paket {plan.upper()} akan habis dalam {days_left} hari "
+            f"({local_exp.strftime('%d-%m-%Y %H:%M:%S')} WIB)."
+        )
+        key = f"{plan}:{exp_dt.isoformat()}:{days_left}" if days_left in (7, 2) else None
+        return notice, key
+    except Exception:
+        return None, None
+
+
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("User Stats function triggered")
 
@@ -242,18 +320,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Admin actions fallback endpoint (stable under /api/user-stats)
         if req.method == "GET":
-            admin_action = (req.params.get("action") or "").strip().lower()
-            if admin_action in {"admin-overview", "admin-users", "admin-activity"}:
-                if not _is_admin_user(user):
-                    return error_response("Admin access required", 403)
-
-                if admin_action == "admin-overview":
-                    return success_response(_admin_overview())
-                if admin_action == "admin-users":
-                    search = (req.params.get("search") or "").strip().lower()
-                    limit = int(req.params.get("limit") or "40")
-                    return success_response(_admin_users(search, limit))
-                return success_response(_admin_activity())
+            admin_get_response = _handle_admin_get_action(req, user)
+            if admin_get_response is not None:
+                return admin_get_response
 
         if req.method == "POST":
             try:
@@ -261,40 +330,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             except Exception:
                 return error_response("Invalid JSON body", 400)
 
-            action = str(body.get("action") or "").strip().lower()
-            if action in {"ban-user", "add-credits"}:
-                if not _is_admin_user(user):
-                    return error_response("Admin access required", 403)
-
-                if action == "ban-user":
-                    target_user_id = str(body.get("targetUserId") or "").strip()
-                    if not target_user_id:
-                        return error_response("targetUserId is required", 400)
-                    if target_user_id == user_id:
-                        return error_response("Admin cannot ban self", 400)
-                    banned = bool(body.get("banned", True))
-                    reason = str(body.get("reason") or "Policy violation").strip()[:200]
-                    _admin_set_ban(user_id, target_user_id, banned, reason)
-                    return success_response({"ok": True, "targetUserId": target_user_id, "banned": banned})
-
-                target_user_id = str(body.get("targetUserId") or "").strip()
-                amount = int(body.get("amount") or 0)
-                if not target_user_id:
-                    return error_response("targetUserId is required", 400)
-                if amount <= 0:
-                    return error_response("amount must be > 0", 400)
-                return success_response(_admin_add_credits(user_id, target_user_id, amount))
-
-            if action == "reset-non-admin-users":
-                if not _is_admin_user(user):
-                    return error_response("Admin access required", 403)
-
-                confirm = str(body.get("confirm") or "").strip().upper()
-                if confirm != "RESET_NON_ADMIN_USERS":
-                    return error_response("confirm must be RESET_NON_ADMIN_USERS", 400)
-
-                trial_days = int(body.get("trialDays") or 7)
-                return success_response(_admin_reset_non_admin_users(user_id, trial_days))
+            admin_post_response = _handle_admin_post_action(body, user, user_id)
+            if admin_post_response is not None:
+                return admin_post_response
 
         # Get user with credit regen check
         credits = user.get("credits_remaining", get_plan_credit_cap(get_effective_plan(user)))
@@ -355,28 +393,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         quiz_runtime = get_plan_runtime(user, "quiz")
         learning_path_runtime = get_plan_runtime(user, "learning_path")
 
-        plan_expiry_notice = None
-        expiry_reminder_key = None
-        if plan in ("basic", "pro") and plan_expires_at:
-            try:
-                exp_dt = datetime.fromisoformat(plan_expires_at)
-                if exp_dt.tzinfo is None:
-                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-                now_dt = datetime.now(timezone.utc)
-                if exp_dt > now_dt:
-                    delta = exp_dt - now_dt
-                    total_hours = int(delta.total_seconds() // 3600)
-                    days_left = max(0, total_hours // 24)
-                    if delta <= timedelta(days=7):
-                        local_exp = exp_dt.astimezone(timezone(timedelta(hours=7)))
-                        plan_expiry_notice = (
-                            f"Paket {plan.upper()} akan habis dalam {days_left} hari "
-                            f"({local_exp.strftime('%d-%m-%Y %H:%M:%S')} WIB)."
-                        )
-                        if days_left in (7, 2):
-                            expiry_reminder_key = f"{plan}:{exp_dt.isoformat()}:{days_left}"
-            except Exception:
-                plan_expiry_notice = None
+        plan_expiry_notice, expiry_reminder_key = _build_plan_expiry_notice_and_key(plan, plan_expires_at)
 
         # Email reminder milestones for expiring paid plans (H-7 and H-2)
         if expiry_reminder_key and email:

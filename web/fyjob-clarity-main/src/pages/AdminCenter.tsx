@@ -65,6 +65,20 @@ const AdminCenter = () => {
     loadAll();
   }, [isAllowedAdminEmail]);
 
+  const runMutation = async (
+    task: () => Promise<void>,
+    successMessage: string,
+    fallbackErrorMessage: string,
+  ) => {
+    try {
+      await task();
+      toast.success(successMessage);
+      await loadAll(search.trim());
+    } catch (e: any) {
+      toast.error(e?.message || fallbackErrorMessage);
+    }
+  };
+
   const handleSearch = async () => {
     try {
       const result = await getAdminUsers(search.trim(), 40);
@@ -75,14 +89,14 @@ const AdminCenter = () => {
   };
 
   const handleBanToggle = async (user: AdminUserRow) => {
-    try {
-      const willBan = !Boolean(user.is_banned);
-      await adminSetUserBan(user.id, willBan, willBan ? "Violation of platform policy" : "");
-      toast.success(willBan ? "User banned" : "User unbanned");
-      await loadAll(search.trim());
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to update user status");
-    }
+    const willBan = !Boolean(user.is_banned);
+    await runMutation(
+      async () => {
+        await adminSetUserBan(user.id, willBan, willBan ? "Violation of platform policy" : "");
+      },
+      willBan ? "User banned" : "User unbanned",
+      "Failed to update user status",
+    );
   };
 
   const handleAddCredits = async (user: AdminUserRow) => {
@@ -92,23 +106,23 @@ const AdminCenter = () => {
       return;
     }
 
-    try {
-      await adminAddUserCredits(user.id, amount);
-      toast.success(`+${amount} token ditambahkan ke ${user.email}`);
-      await loadAll(search.trim());
-    } catch (e: any) {
-      toast.error(e?.message || "Failed adding credits");
-    }
+    await runMutation(
+      async () => {
+        await adminAddUserCredits(user.id, amount);
+      },
+      `+${amount} token ditambahkan ke ${user.email}`,
+      "Failed adding credits",
+    );
   };
 
   const handleTestingPlanSave = async () => {
-    try {
-      await adminSetTestingPlan(testingPlan);
-      toast.success(testingPlan === "off" ? "Testing plan dimatikan" : `Admin testing plan diubah ke ${testingPlan}`);
-      await loadAll(search.trim());
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to update testing plan");
-    }
+    await runMutation(
+      async () => {
+        await adminSetTestingPlan(testingPlan);
+      },
+      testingPlan === "off" ? "Testing plan dimatikan" : `Admin testing plan diubah ke ${testingPlan}`,
+      "Failed to update testing plan",
+    );
   };
 
   const handleResetAllNonAdmin = async () => {
@@ -117,14 +131,16 @@ const AdminCenter = () => {
       return;
     }
 
-    try {
-      const result = await adminResetNonAdminUsers(resetTrialDays);
-      toast.success(`Reset selesai: ${result.updated_count} user non-admin di-set ke Pro trial.`);
-      setResetConfirmText("");
-      await loadAll(search.trim());
-    } catch (e: any) {
-      toast.error(e?.message || "Reset users gagal");
-    }
+    let updatedCount = 0;
+    await runMutation(
+      async () => {
+        const result = await adminResetNonAdminUsers(resetTrialDays);
+        updatedCount = Number(result.updated_count || 0);
+        setResetConfirmText("");
+      },
+      `Reset selesai: ${updatedCount} user non-admin di-set ke Pro trial.`,
+      "Reset users gagal",
+    );
   };
 
   const usageRows = useMemo(() => activity?.usage || [], [activity]);
