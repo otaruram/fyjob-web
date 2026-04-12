@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Wallet, QrCode, Smartphone, Landmark, Loader2, ArrowLeft, ShieldCheck } from "lucide-react";
+import { Wallet, QrCode, Smartphone, Loader2, ArrowLeft, ShieldCheck } from "lucide-react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,16 +8,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { createPaymentTransaction } from "@/lib/api";
 
-type PaymentMethodValue = "qris" | "gopay" | "shopeepay" | "bni_va" | "bri_va" | "permata_va" | "cimb_niaga_va";
+type PaymentMethodValue = "qris" | "gopay";
 
-const PAYMENT_METHODS: Array<{ value: PaymentMethodValue; label: string; icon: React.ReactNode; group: "ewallet" | "va" }> = [
+const PAYMENT_METHODS: Array<{ value: PaymentMethodValue; label: string; icon: React.ReactNode; group: "ewallet" }> = [
   { value: "qris", label: "QRIS", icon: <QrCode className="h-4 w-4" />, group: "ewallet" },
   { value: "gopay", label: "GoPay", icon: <Smartphone className="h-4 w-4" />, group: "ewallet" },
-  { value: "shopeepay", label: "ShopeePay", icon: <Smartphone className="h-4 w-4" />, group: "ewallet" },
-  { value: "bni_va", label: "BNI VA", icon: <Landmark className="h-4 w-4" />, group: "va" },
-  { value: "bri_va", label: "BRI VA", icon: <Landmark className="h-4 w-4" />, group: "va" },
-  { value: "permata_va", label: "Permata VA", icon: <Landmark className="h-4 w-4" />, group: "va" },
-  { value: "cimb_niaga_va", label: "CIMB Niaga VA", icon: <Landmark className="h-4 w-4" />, group: "va" },
 ];
 
 const PLAN_META = {
@@ -34,7 +29,7 @@ export default function Checkout() {
   const plan = (searchParams.get("plan") || "basic").toLowerCase() as "basic" | "pro";
   const safePlan = plan === "pro" ? "pro" : "basic";
 
-  const defaultMethod = useMemo<PaymentMethodValue>(() => (isMobile ? "gopay" : "bni_va"), [isMobile]);
+  const defaultMethod = useMemo<PaymentMethodValue>(() => (isMobile ? "gopay" : "qris"), [isMobile]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>(defaultMethod);
   const [isPaying, setIsPaying] = useState(false);
 
@@ -120,7 +115,7 @@ export default function Checkout() {
                       {method.icon} {method.label}
                     </span>
                     <span className="block text-xs text-muted-foreground mt-1">
-                      {method.group === "ewallet" ? "Instant e-wallet / QR" : "Virtual account bank"}
+                      Instant e-wallet / QR
                     </span>
                   </button>
                 );

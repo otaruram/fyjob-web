@@ -88,7 +88,40 @@ def send_weekly_summary(to: str, name: str, total_analyses: int, avg_score: int,
         <li>Average match score: <strong>{avg_score}%</strong></li>
         <li>Top skill gap: <strong>{top_gap or 'None'}</strong></li>
       </ul>
-      <p><a href="https://fyjob.app/dashboard" style="color:#6366f1">Open Dashboard →</a></p>
+      <p><a href="https://fyjob.my.id/dashboard" style="color:#6366f1">Open Dashboard →</a></p>
+    </div>"""
+    return send_email(to, subject, html)
+
+
+def send_trial_welcome_email(to: str, name: str) -> bool:
+    from datetime import datetime, timedelta
+    trial_end = (datetime.utcnow() + timedelta(days=7)).strftime("%d %B %Y")
+    display_name = name.split("@")[0] if "@" in name else name
+    subject = "Selamat Datang di FYJob — Trial Pro 7 Hari Kamu Sudah Aktif! 🎉"
+    html = f"""
+    <div style="font-family:sans-serif;max-width:520px;margin:auto;color:#1e293b">
+      <h2 style="color:#6366f1;margin-bottom:4px">Halo, {display_name}! 👋</h2>
+      <p style="margin-top:0">Akun FYJob kamu sudah aktif dengan <strong>Trial Pro Plan selama 7 hari</strong> — gratis!</p>
+      <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin:16px 0">
+        <p style="margin:0 0 8px 0"><strong>Yang kamu dapat selama trial:</strong></p>
+        <ul style="margin:0;padding-left:20px;line-height:1.8">
+          <li>✅ Analisis CV tak terbatas dengan AI</li>
+          <li>✅ Interview latihan dengan AI (termasuk mode suara)</li>
+          <li>✅ Killer Quiz untuk posisi apapun</li>
+          <li>✅ Learning Path yang dipersonalisasi</li>
+          <li>✅ 20 kredit per hari</li>
+        </ul>
+      </div>
+      <p>Trial berlaku hingga <strong>{trial_end}</strong>. Setelah itu akun otomatis beralih ke Free Plan.</p>
+      <p style="margin-top:20px">
+        <a href="https://fyjob.my.id/dashboard"
+           style="background:#6366f1;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+          Buka Dashboard →
+        </a>
+      </p>
+      <p style="font-size:12px;color:#94a3b8;margin-top:24px">
+        Email ini dikirim secara otomatis. Jangan balas email ini.
+      </p>
     </div>"""
     return send_email(to, subject, html)
 
@@ -103,6 +136,6 @@ def send_new_quiz_alert(to: str, job_title: str) -> bool:
             <p style="margin-top:16px">
                 Open FYJob dashboard to start practicing and improve your match score.
             </p>
-            <p><a href="https://fyjob.app/dashboard/quiz" style="color:#2563eb">Open Killer Quiz →</a></p>
+            <p><a href="https://fyjob.my.id/dashboard/quiz" style="color:#2563eb">Open Killer Quiz →</a></p>
         </div>"""
         return send_email(to, subject, html)

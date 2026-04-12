@@ -34,6 +34,7 @@ const KillerQuiz = () => {
   const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisHistory | null>(null);
   
   const [quiz, setQuiz] = useState<QuizData | null>(null);
+  const [quizCacheByAnalysis, setQuizCacheByAnalysis] = useState<Record<string, QuizData>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -66,6 +67,15 @@ const KillerQuiz = () => {
       setSelectedAnalysis(analysis);
       setErrorMsg(null);
       setResults(null);
+
+      const localCachedQuiz = quizCacheByAnalysis[analysis.id];
+      if (localCachedQuiz) {
+        setQuiz(localCachedQuiz);
+        setCurrentIdx(0);
+        setMcqAnswers({});
+        setEssayAnswers({});
+        return;
+      }
       
       // If it doesn't have a generated quiz, it will cost 1 credit
       // Even if it has one, generateQuiz just returns the cached one
@@ -73,6 +83,7 @@ const KillerQuiz = () => {
       const res = await generateQuiz(analysis.id);
       
       setQuiz(res.quiz);
+      setQuizCacheByAnalysis((prev) => ({ ...prev, [analysis.id]: res.quiz }));
       setCurrentIdx(0);
       setMcqAnswers({});
       setEssayAnswers({});

@@ -16,7 +16,7 @@ import {
   type InterviewLanguage,
   type InterviewMode,
 } from "@/lib/api";
-import { Crown, Mic, MicOff, Send, Bot, UserRound, Loader2, Volume2, Play, Pause } from "lucide-react";
+import { Crown, Mic, MicOff, Send, Bot, UserRound, Loader2, Play, Pause, RotateCcw, Volume2 } from "lucide-react";
 
 type AnalysisHistory = {
   id: string;
@@ -26,8 +26,34 @@ type AnalysisHistory = {
 };
 
 type InterviewMessage = {
+  id: string;
   role: "assistant" | "user";
   content: string;
+  audioUrl?: string | null;
+  audioMimeType?: string | null;
+};
+
+type CachedInterviewMessage = {
+  id: string;
+  role: "assistant" | "user";
+  content: string;
+};
+
+type InterviewCacheRecord = Record<
+  string,
+  {
+    messages: CachedInterviewMessage[];
+    updatedAt: string;
+    mode: InterviewMode;
+    sessionId: string | null;
+  }
+>;
+
+type ParsedAssistantMessage = {
+  evaluation: string[];
+  questionTitle: string | null;
+  questionBody: string[];
+  hintPoints: string[];
 };
 
 const LANGUAGE_LABEL: Record<InterviewLanguage, string> = {
@@ -42,7 +68,25 @@ const MODE_LABEL: Record<InterviewMode, string> = {
 };
 
 const INTERVIEW_CACHE_KEY = "fyjob_interview_lite_cache_v1";
-type InterviewCacheRecord = Record<string, { messages: InterviewMessage[]; updatedAt: string; mode: InterviewMode; sessionId: string | null }>;
+
+const makeMessageId = () => {
+  const randomPart = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `msg_${randomPart}`;
+};
+
+const normalizeCachedMessages = (messages: Partial<CachedInterviewMessage>[] | undefined): InterviewMessage[] => {
+  return (messages || [])
+    .filter((message): message is Partial<CachedInterviewMessage> & { role: "assistant" | "user"; content: string } => {
+      return (message?.role === "assistant" || message?.role === "user") && typeof message?.content === "string";
+    })
+    .map((message) => ({
+      id: typeof message.id === "string" && message.id.trim() ? message.id : makeMessageId(),
+      role: message.role,
+      content: message.content,
+      audioUrl: null,
+      audioMimeType: null,
+    }));
+};
 
 const readInterviewCache = (): InterviewCacheRecord => {
   try {
@@ -61,6 +105,74 @@ const writeInterviewCache = (data: InterviewCacheRecord) => {
   }
 };
 
+const toCachedMessages = (messages: InterviewMessage[]): CachedInterviewMessage[] => {
+  return messages.map(({ id, role, content }) => ({ id, role, content }));
+};
+
+const sanitizeDisplayLine = (value: string) => {
+  return value.replace(/[*_#`~]+/g, "").trim();
+};
+
+const stripBulletPrefix = (value: string) => {
+  return sanitizeDisplayLine(value).replace(/^[•\-\u2013\u2014\s]+/, "").trim();
+};
+
+const parseAssistantMessage = (content: string): ParsedAssistantMessage | null => {
+  const parsed: ParsedAssistantMessage = {
+    evaluation: [],
+    questionTitle: null,
+    questionBody: [],
+    hintPoints: [],
+  };
+
+  let currentSection: "evaluation" | "question" | "hint" | null = null;
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = sanitizeDisplayLine(rawLine);
+    if (!line) {
+      continue;
+    }
+
+    const lower = line.toLowerCase();
+    if (lower.startsWith("evaluasi jawaban")) {
+      currentSection = "evaluation";
+      const remainder = line.replace(/^[^:]+:/, "").trim();
+      if (remainder) parsed.evaluation.push(stripBulletPrefix(remainder));
+      continue;
+    }
+
+    if (lower.startsWith("pertanyaan interview")) {
+      currentSection = "question";
+      const titleMatch = line.match(/^(Pertanyaan Interview\s*\d*)\s*:/i);
+      parsed.questionTitle = titleMatch?.[1] || "Pertanyaan Interview";
+      const remainder = line.replace(/^[^:]+:/, "").trim();
+      if (remainder) parsed.questionBody.push(remainder);
+      continue;
+    }
+
+    if (lower.startsWith("poin jawaban kuat") || lower.startsWith("petunjuk jawaban kuat")) {
+      currentSection = "hint";
+      const remainder = line.replace(/^[^:]+:/, "").trim();
+      if (remainder) parsed.hintPoints.push(stripBulletPrefix(remainder));
+      continue;
+    }
+
+    if (currentSection === "evaluation") {
+      parsed.evaluation.push(stripBulletPrefix(line));
+    } else if (currentSection === "question") {
+      parsed.questionBody.push(line);
+    } else if (currentSection === "hint") {
+      parsed.hintPoints.push(stripBulletPrefix(line));
+    }
+  }
+
+  if (!parsed.evaluation.length && !parsed.questionBody.length && !parsed.hintPoints.length) {
+    return null;
+  }
+
+  return parsed;
+};
+
 const InterviewLite = () => {
   const [history, setHistory] = useState<AnalysisHistory[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -69,6 +181,7 @@ const InterviewLite = () => {
   const [mode, setMode] = useState<InterviewMode>("text");
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [qualityMode, setQualityMode] = useState<"lite" | "deep">("lite");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [messages, setMessages] = useState<InterviewMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -80,84 +193,246 @@ const InterviewLite = () => {
   const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState("");
   const [queueDepth, setQueueDepth] = useState(0);
+  const [restoredFromCache, setRestoredFromCache] = useState(false);
   const requestQueueRef = useRef<Promise<void>>(Promise.resolve());
 
-  // Speech mode state
   const [isRecording, setIsRecording] = useState(false);
   const [isSttLoading, setIsSttLoading] = useState(false);
   const [isTtsLoading, setIsTtsLoading] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isAudioPaused, setIsAudioPaused] = useState(false);
+  const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlsRef = useRef<Set<string>>(new Set());
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<InterviewMessage[]>([]);
+
+  const registerAudioUrl = useCallback((audioUrl: string) => {
+    audioUrlsRef.current.add(audioUrl);
+    return audioUrl;
+  }, []);
+
+  const cleanupAudioPlayback = useCallback(() => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.removeAttribute("src");
+      audioPlayerRef.current.load();
+    }
+    setIsPlayingAudio(false);
+    setIsAudioPaused(false);
+    setActiveAudioMessageId(null);
+  }, []);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      cleanupAudioPlayback();
+      for (const audioUrl of audioUrlsRef.current) {
+        URL.revokeObjectURL(audioUrl);
+      }
+      audioUrlsRef.current.clear();
+    };
+  }, [cleanupAudioPlayback]);
+
+  const getAudioPlayer = useCallback(() => {
+    if (!audioPlayerRef.current) {
+      const audio = new Audio();
+      audio.onended = () => {
+        setIsPlayingAudio(false);
+        setIsAudioPaused(false);
+        setActiveAudioMessageId(null);
+      };
+      audio.onpause = () => {
+        if (!audio.ended && audio.currentTime > 0) {
+          setIsPlayingAudio(false);
+          setIsAudioPaused(true);
+        }
+      };
+      audio.onplay = () => {
+        setIsPlayingAudio(true);
+        setIsAudioPaused(false);
+      };
+      audioPlayerRef.current = audio;
+    }
+    return audioPlayerRef.current;
+  }, []);
+
+  const playAudioSource = useCallback(
+    async (messageId: string, audioUrl: string, restart = false) => {
+      const audio = getAudioPlayer();
+      if (audio.src !== audioUrl) {
+        audio.src = audioUrl;
+      }
+      if (restart) {
+        audio.currentTime = 0;
+      }
+      setActiveAudioMessageId(messageId);
+      setIsPlayingAudio(true);
+      setIsAudioPaused(false);
+      try {
+        await audio.play();
+      } catch (playError) {
+        console.error("Audio playback failed:", playError);
+        setIsPlayingAudio(false);
+      }
+    },
+    [getAudioPlayer]
+  );
+
+  const playMessageAudio = useCallback(
+    async (messageId: string, restart = false) => {
+      const message = messagesRef.current.find((item) => item.id === messageId);
+      if (!message?.audioUrl) return;
+      await playAudioSource(messageId, message.audioUrl, restart);
+    },
+    [playAudioSource]
+  );
+
+  const toggleMessageAudio = useCallback(
+    (messageId: string) => {
+      const message = messagesRef.current.find((item) => item.id === messageId);
+      if (!message?.audioUrl) return;
+
+      const audio = getAudioPlayer();
+      if (activeAudioMessageId !== messageId || audio.src !== message.audioUrl) {
+        void playAudioSource(messageId, message.audioUrl, true);
+        return;
+      }
+
+      if (audio.paused) {
+        void audio.play().catch(() => {
+          setIsPlayingAudio(false);
+        });
+      } else {
+        audio.pause();
+      }
+    },
+    [activeAudioMessageId, getAudioPlayer, playAudioSource]
+  );
+
+  const replayMessageAudio = useCallback(
+    (messageId: string) => {
+      void playMessageAudio(messageId, true);
+    },
+    [playMessageAudio]
+  );
+
+  const synthesizeAssistantAudio = useCallback(
+    async (messageId: string, text: string, autoPlay = true) => {
+      if (!text) return;
+
+      setIsTtsLoading(true);
+      try {
+        const res = await ttsInterviewLite(text, language);
+        const binaryString = atob(res.audioBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let index = 0; index < binaryString.length; index++) {
+          bytes[index] = binaryString.charCodeAt(index);
+        }
+        const mimeType = res.outputFormat?.toLowerCase().includes("mp3") ? "audio/mpeg" : "audio/wav";
+        const blob = new Blob([bytes], { type: mimeType });
+        const audioUrl = registerAudioUrl(URL.createObjectURL(blob));
+
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  audioUrl,
+                  audioMimeType: mimeType,
+                }
+              : message
+          )
+        );
+
+        if (autoPlay) {
+          await playAudioSource(messageId, audioUrl, true);
+        }
+      } catch (ttsError) {
+        console.error("TTS failed:", ttsError);
+      } finally {
+        setIsTtsLoading(false);
+      }
+    },
+    [language, playAudioSource, registerAudioUrl]
+  );
 
   useEffect(() => {
     const load = async () => {
       try {
         const stats = await getUserStats();
-        setSpeechEnabled(Boolean(stats?.interview_access?.speech_enabled || stats?.role === "admin"));
-        setQualityMode((stats?.interview_access?.quality as "lite" | "deep") || (stats?.role === "admin" ? "deep" : "lite"));
+        const adminMode = stats?.role === "admin";
+        setIsAdmin(adminMode);
+        setSpeechEnabled(Boolean(stats?.interview_access?.speech_enabled || adminMode));
+        setQualityMode((stats?.interview_access?.quality as "lite" | "deep") || (adminMode ? "deep" : "lite"));
+        setSessionCost(adminMode ? 0 : mode === "speech" ? 3 : 2);
 
         const data = await getAnalysisHistory(20, 0);
-        const mapped = (data || []).map((h) => ({
-          id: h.id,
-          jobTitle: h.jobTitle,
-          portal: h.portal,
-          created_at: h.created_at,
+        const mapped = (data || []).map((item) => ({
+          id: item.id,
+          jobTitle: item.jobTitle,
+          portal: item.portal,
+          created_at: item.created_at,
         }));
         setHistory(mapped);
         if (mapped.length > 0) {
           setSelectedAnalysisId(mapped[0].id);
         }
-      } catch (e: any) {
-        setError(e?.message || "Failed to load analysis history");
+      } catch (loadError: any) {
+        setError(loadError?.message || "Failed to load analysis history");
       } finally {
         setIsLoadingHistory(false);
       }
     };
 
     load();
-  }, []);
+  }, [mode]);
 
   const hasAnalysis = history.length > 0;
   const selectedAnalysis = useMemo(
-    () => history.find((h) => h.id === selectedAnalysisId) || null,
+    () => history.find((item) => item.id === selectedAnalysisId) || null,
     [history, selectedAnalysisId]
   );
 
   const cacheKey = `${selectedAnalysisId || "none"}::${language}::${mode}`;
 
   const enqueueRequest = async (task: () => Promise<void>) => {
-    setQueueDepth((v) => v + 1);
+    setQueueDepth((value) => value + 1);
     const run = requestQueueRef.current.then(task, task);
     requestQueueRef.current = run.then(() => undefined, () => undefined);
     try {
       await run;
     } finally {
-      setQueueDepth((v) => Math.max(0, v - 1));
+      setQueueDepth((value) => Math.max(0, value - 1));
     }
   };
 
   useEffect(() => {
     if (!selectedAnalysisId) return;
+    cleanupAudioPlayback();
     const cache = readInterviewCache();
     const cached = cache[cacheKey];
-    setMessages(cached?.messages || []);
+    const normalizedMessages = normalizeCachedMessages(cached?.messages);
+    setMessages(normalizedMessages);
     setSessionId(cached?.sessionId || null);
-    setTurnCount((cached?.messages || []).filter((m) => m.role === "assistant").length);
+    setRestoredFromCache(Boolean(cached?.sessionId && normalizedMessages.length > 0));
+    setTurnCount(normalizedMessages.filter((message) => message.role === "assistant").length);
     setMaxQuestions(5);
-    setSessionCost(mode === "speech" ? 3 : 2);
+    setSessionCost(isAdmin ? 0 : mode === "speech" ? 3 : 2);
     setDraftAnswer("");
     setIsAnswering(false);
-  }, [selectedAnalysisId, language, mode, cacheKey]);
+  }, [selectedAnalysisId, language, mode, cacheKey, cleanupAudioPlayback, isAdmin]);
 
   useEffect(() => {
     if (!selectedAnalysisId || messages.length === 0) return;
     const cache = readInterviewCache();
     cache[cacheKey] = {
-      messages,
+      messages: toCachedMessages(messages),
       updatedAt: new Date().toISOString(),
       mode,
       sessionId,
@@ -165,70 +440,9 @@ const InterviewLite = () => {
     writeInterviewCache(cache);
   }, [messages, selectedAnalysisId, cacheKey, mode, sessionId]);
 
-  // Auto-scroll to bottom when messages update
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
-
-  // Play TTS for last assistant message when in speech mode
-  const playTts = useCallback(async (text: string) => {
-    if (!text) return;
-    setIsTtsLoading(true);
-    try {
-      const res = await ttsInterviewLite(text, language);
-      // Convert base64 to Blob for reliable playback
-      const binaryString = atob(res.audioBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: "audio/mpeg" });
-      const audioUrl = URL.createObjectURL(blob);
-      
-      if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
-        if (audioPlayerRef.current.src.startsWith("blob:")) {
-          URL.revokeObjectURL(audioPlayerRef.current.src);
-        }
-      }
-      const audio = new Audio();
-      audio.src = audioUrl;
-      audioPlayerRef.current = audio;
-      setIsPlayingAudio(true);
-      setIsAudioPaused(false);
-      audio.onended = () => {
-        setIsPlayingAudio(false);
-        setIsAudioPaused(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setIsPlayingAudio(false);
-        setIsAudioPaused(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onpause = () => setIsAudioPaused(true);
-      audio.onplay = () => setIsAudioPaused(false);
-      audio.play().catch((err) => {
-        console.error("Audio playback failed:", err);
-        setIsPlayingAudio(false);
-      });
-    } catch (err) {
-      console.error("TTS failed:", err);
-      // TTS failure is non-blocking — user can fallback to reading
-    } finally {
-      setIsTtsLoading(false);
-    }
-  }, [language]);
-
-  const toggleAudioPlayback = () => {
-    const audio = audioPlayerRef.current;
-    if (!audio) return;
-    if (audio.paused) {
-      audio.play().catch(() => {});
-    } else {
-      audio.pause();
-    }
-  };
 
   const startInterview = async () => {
     if (!selectedAnalysisId) return;
@@ -236,33 +450,48 @@ const InterviewLite = () => {
       setError("Speech mode hanya untuk Pro/Admin plan.");
       return;
     }
+    if (sessionId && messages.length > 0) {
+      setError("");
+      setRestoredFromCache(true);
+      return;
+    }
+
     await enqueueRequest(async () => {
       setError("");
       setMessages([]);
       setDraftAnswer("");
       setIsAnswering(false);
       setIsThinking(true);
+      cleanupAudioPlayback();
 
       try {
         const res = await startInterviewLite(selectedAnalysisId, language, mode);
+        const assistantId = makeMessageId();
+        const firstMessage = res.assistantResponse || "Mari mulai. Jelaskan pendekatan teknis Anda untuk role ini.";
+        const effectiveCost = isAdmin ? 0 : mode === "speech" ? 3 : Math.max(1, res.sessionCost ?? 2);
+
         setSessionId(res.sessionId);
         setTurnCount(res.turnCount || 1);
         setMaxQuestions(res.maxQuestions || 5);
-        setSessionCost(res.sessionCost ?? (mode === "speech" ? 3 : 2));
-        const firstMsg = res.assistantResponse || "Let's begin. Tell me about your approach for this role.";
-        setMessages([{ role: "assistant", content: firstMsg }]);
-        if (mode === "speech") await playTts(firstMsg);
-      } catch (e: any) {
-        setError(e?.message || "Failed to start interview");
+        setSessionCost(effectiveCost);
+        setMessages([{ id: assistantId, role: "assistant", content: firstMessage }]);
+        setRestoredFromCache(false);
+
+        if (mode === "speech") {
+          await synthesizeAssistantAudio(assistantId, firstMessage, true);
+        }
+      } catch (startError: any) {
+        setError(startError?.message || "Failed to start interview");
       } finally {
         setIsThinking(false);
       }
     });
   };
 
-  const sendAnswer = async (answerText?: string) => {
-    const answer = answerText ?? draftAnswer;
+  const sendAnswer = async (payload?: { text?: string; audioUrl?: string | null; audioMimeType?: string | null }) => {
+    const answer = payload?.text ?? draftAnswer;
     if (!selectedAnalysisId || !answer.trim()) return;
+
     await enqueueRequest(async () => {
       setError("");
 
@@ -271,34 +500,42 @@ const InterviewLite = () => {
         return;
       }
 
-      const nextMessages: InterviewMessage[] = [...messages, { role: "user", content: answer.trim() }];
-      setMessages(nextMessages);
+      const userMessage: InterviewMessage = {
+        id: makeMessageId(),
+        role: "user",
+        content: answer.trim(),
+        audioUrl: payload?.audioUrl || null,
+        audioMimeType: payload?.audioMimeType || null,
+      };
+
+      setMessages((prev) => [...prev, userMessage]);
       setDraftAnswer("");
       setIsAnswering(false);
       setIsThinking(true);
 
       try {
         const res = await turnInterviewLite(sessionId, answer.trim());
+        const assistantId = makeMessageId();
+        const aiReply = res.assistantResponse || "Evaluasi Jawaban:\n• Jawaban Anda perlu lebih spesifik.\n\nPertanyaan Interview 2:\nJelaskan trade-off teknis yang Anda pilih.\n\nPoin Jawaban Kuat:\n• Beri langkah kerja.\n• Jelaskan alasan teknis.\n• Sebutkan hasil yang diukur.";
         setTurnCount(res.turnCount || turnCount);
         setMaxQuestions(res.maxQuestions || 5);
-        const aiReply = res.assistantResponse || "Thanks. Next question: explain your trade-off decision process.";
-        setMessages((prev) => [...prev, { role: "assistant", content: aiReply }]);
-        if (mode === "speech") await playTts(aiReply);
-      } catch (e: any) {
-        setError(e?.message || "Failed to send answer");
+        setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: aiReply }]);
+
+        if (mode === "speech") {
+          await synthesizeAssistantAudio(assistantId, aiReply, true);
+        }
+      } catch (turnError: any) {
+        setError(turnError?.message || "Failed to send answer");
       } finally {
         setIsThinking(false);
       }
     });
   };
 
-  // ── Speech mode helpers ──────────────────────────────────────────────
-
   const startRecording = async () => {
     setError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // prefer webm; fall back to whatever the browser supports
       const mimeType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
         ? "audio/ogg;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -308,8 +545,12 @@ const InterviewLite = () => {
         : "";
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      recorder.start(250); // chunk every 250ms
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      recorder.start(250);
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
     } catch {
@@ -326,7 +567,7 @@ const InterviewLite = () => {
       recorder.onstop = () => resolve();
       recorder.stop();
     });
-    recorder.stream.getTracks().forEach((t) => t.stop());
+    recorder.stream.getTracks().forEach((track) => track.stop());
     mediaRecorderRef.current = null;
 
     const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
@@ -336,21 +577,39 @@ const InterviewLite = () => {
     try {
       const arrayBuffer = await blob.arrayBuffer();
       const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const audioUrl = registerAudioUrl(URL.createObjectURL(blob));
       const res = await sttInterviewLite(audioBase64, language, blob.type || undefined);
       const transcript = res.transcriptText.trim();
       if (transcript) {
-        // submit immediately as the answer
-        await sendAnswer(transcript);
+        await sendAnswer({
+          text: transcript,
+          audioUrl,
+          audioMimeType: blob.type || "audio/webm",
+        });
       } else {
         setError("No speech detected. Try again.");
         setIsAnswering(true);
       }
-    } catch (e: any) {
-      setError(e?.message || "Speech recognition failed.");
+    } catch (speechError: any) {
+      setError(speechError?.message || "Speech recognition failed.");
       setIsAnswering(true);
     } finally {
       setIsSttLoading(false);
     }
+  };
+
+  const clearCachedSession = () => {
+    cleanupAudioPlayback();
+    const cache = readInterviewCache();
+    delete cache[cacheKey];
+    writeInterviewCache(cache);
+    setMessages([]);
+    setSessionId(null);
+    setTurnCount(0);
+    setMaxQuestions(5);
+    setDraftAnswer("");
+    setIsAnswering(false);
+    setRestoredFromCache(false);
   };
 
   return (
@@ -363,35 +622,33 @@ const InterviewLite = () => {
               <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">Premium</Badge>
             </div>
             <h1 className="text-2xl font-bold text-foreground">AI Interview Lite</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Push-to-talk style: AI asks, you press answer, then send to continue.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Push-to-talk style: AI asks, you answer, lalu AI langsung evaluasi dan lanjut ke pertanyaan berikutnya.</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {sessionId
                 ? `Progress: ${Math.min(turnCount, maxQuestions)}/${maxQuestions} technical questions`
-                : `Session cost: ${sessionCost ?? (mode === "speech" ? 3 : 2)} credits (${mode === "speech" ? "speech" : "text"} mode)`}
+                : `Session cost: ${sessionCost ?? (isAdmin ? 0 : mode === "speech" ? 3 : 2)} credits (${mode === "speech" ? "speech" : "text"} mode)`}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Interview quality: {qualityMode === "deep" ? "Deep Coach" : "Lite Coach"}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Interview quality: {qualityMode === "deep" ? "Deep Coach" : "Lite Coach"}</p>
           </div>
         </motion.div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
-          <div className="glass rounded-xl p-4 gradient-border space-y-4">
+          <div className="glass rounded-xl space-y-4 p-4 gradient-border">
             <div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground">Interview Context</p>
-              <p className="text-xs text-muted-foreground mt-1">Questions are generated from selected analysis + your CV context.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Questions are generated from selected analysis + your CV context.</p>
             </div>
 
             <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Interview Language</p>
-              <Select value={language} onValueChange={(v) => setLanguage(v as InterviewLanguage)}>
+              <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Interview Language</p>
+              <Select value={language} onValueChange={(value) => setLanguage(value as InterviewLanguage)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select language" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(["id", "en", "zh"] as InterviewLanguage[]).map((lang) => (
-                    <SelectItem key={lang} value={lang}>
-                      {LANGUAGE_LABEL[lang]}
+                  {(["id", "en", "zh"] as InterviewLanguage[]).map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {LANGUAGE_LABEL[item]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -399,33 +656,31 @@ const InterviewLite = () => {
             </div>
 
             <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Interaction Mode</p>
+              <p className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Interaction Mode</p>
               <Select
                 value={mode}
-                onValueChange={(v) => {
-                  const next = v as InterviewMode;
-                  if (next === "speech" && !speechEnabled) {
+                onValueChange={(value) => {
+                  const nextMode = value as InterviewMode;
+                  if (nextMode === "speech" && !speechEnabled) {
                     setError("Speech mode hanya untuk Pro/Admin plan.");
                     return;
                   }
-                  setMode(next);
+                  setMode(nextMode);
                 }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(["text", "speech"] as InterviewMode[]).map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m === "speech" && !speechEnabled ? `${MODE_LABEL[m]} (Pro/Admin)` : MODE_LABEL[m]}
+                  {(["text", "speech"] as InterviewMode[]).map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item === "speech" && !speechEnabled ? `${MODE_LABEL[item]} (Pro/Admin)` : MODE_LABEL[item]}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {mode === "speech" && (
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Hold to record → AI transcribes → AI replies in voice.
-                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">Record jawaban, AI transcribes, lalu AI menjawab dengan teks dan suara otomatis.</p>
               )}
             </div>
 
@@ -444,9 +699,9 @@ const InterviewLite = () => {
                     <SelectValue placeholder="Select analysis" />
                   </SelectTrigger>
                   <SelectContent>
-                    {history.map((h) => (
-                      <SelectItem key={h.id} value={h.id}>
-                        {h.jobTitle} - {h.portal}
+                    {history.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.jobTitle} - {item.portal}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -460,8 +715,11 @@ const InterviewLite = () => {
                 )}
 
                 <Button className="w-full" onClick={startInterview} disabled={isThinking || !selectedAnalysisId}>
-                  Start Interview
+                  {sessionId && messages.length > 0 ? "Resume Session" : "Start Interview"}
                 </Button>
+                {restoredFromCache && (
+                  <p className="text-[11px] text-muted-foreground">Session lokal ditemukan. Klik Resume Session untuk lanjut tanpa generate ulang pertanyaan awal.</p>
+                )}
                 <Button
                   variant="outline"
                   className="w-full"
@@ -475,14 +733,15 @@ const InterviewLite = () => {
                         setMessages((prev) => [
                           ...prev,
                           {
+                            id: makeMessageId(),
                             role: "assistant",
                             content: `Interview summary:\n${res.summary || "Session completed."}`,
                           },
                         ]);
                         setSessionId(null);
                         setTurnCount(0);
-                      } catch (e: any) {
-                        setError(e?.message || "Failed to end interview");
+                      } catch (endError: any) {
+                        setError(endError?.message || "Failed to end interview");
                       } finally {
                         setIsThinking(false);
                       }
@@ -492,87 +751,97 @@ const InterviewLite = () => {
                 >
                   End Interview
                 </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full"
-                  onClick={() => {
-                    const cache = readInterviewCache();
-                    delete cache[cacheKey];
-                    writeInterviewCache(cache);
-                    setMessages([]);
-                    setSessionId(null);
-                    setTurnCount(0);
-                    setMaxQuestions(5);
-                    setDraftAnswer("");
-                    setIsAnswering(false);
-                  }}
-                  disabled={!selectedAnalysisId}
-                >
+                <Button variant="ghost" className="w-full" onClick={clearCachedSession} disabled={!selectedAnalysisId}>
                   Clear Cached Session
                 </Button>
               </>
             )}
           </div>
 
-          <div className="glass rounded-xl p-4 gradient-border flex min-h-[520px] flex-col">
-            <div className="flex-1 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+          <div className="glass gradient-border flex min-h-[520px] flex-col rounded-xl p-4">
+            <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto pr-1">
               {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-center text-sm text-muted-foreground">
+                <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
                   Start session to get first interview question.
                 </div>
               ) : (
-                messages.map((m, idx) => {
-                  const isAssistant = m.role === "assistant";
-                  const isSpeechMode = mode === "speech";
-                  const questionNumber = messages.slice(0, idx + 1).filter((x) => x.role === "assistant").length;
-                  
-                  // Parse structured format for assistant messages
-                  let displayContent = m.content;
-                  let questionHeader = null;
-                  let hintContent = null;
-                  
-                  if (isAssistant && /\*\*\s*Pertanyaan Interview/i.test(m.content)) {
-                    const questionMatch = m.content.match(/\*\*\s*Pertanyaan Interview[^*]*\*\*\s*([\s\S]*?)(?=\*\*\s*Petunjuk|$)/i);
-                    const hintMatch = m.content.match(/\*\*\s*Petunjuk Jawaban Kuat[^*]*\*\*\s*([\s\S]*?)$/i);
-                    
-                    if (questionMatch) {
-                      questionHeader = questionMatch[1].trim();
-                      hintContent = hintMatch ? hintMatch[1].trim() : null;
-                      displayContent = null;
-                    }
-                  }
-                  
+                messages.map((message, index) => {
+                  const isAssistant = message.role === "assistant";
+                  const parsedAssistant = isAssistant ? parseAssistantMessage(message.content) : null;
+                  const isActiveAudio = activeAudioMessageId === message.id;
+                  const canPlayAudio = Boolean(message.audioUrl);
+
                   return (
                     <div
-                      key={`${m.role}-${idx}`}
+                      key={message.id}
                       className={`rounded-xl border p-4 text-sm ${isAssistant ? "border-primary/20 bg-primary/5" : "border-border bg-background/60"}`}
                     >
                       <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                         {isAssistant ? <Bot className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
                         {isAssistant ? "AI Interviewer" : "Your Answer"}
                       </div>
-                      
-                      {isSpeechMode && isAssistant ? (
-                        <p className="leading-relaxed text-foreground/80">
-                          AI voice response played.
-                        </p>
-                      ) : questionHeader ? (
+
+                      {parsedAssistant ? (
                         <div className="space-y-3">
-                          <div>
-                            <p className="font-semibold text-primary mb-1.5">Pertanyaan Interview {questionNumber}:</p>
-                            <p className="whitespace-pre-line leading-relaxed text-foreground">{questionHeader}</p>
-                          </div>
-                          {hintContent && (
-                            <div className="rounded-lg bg-background/40 p-3 border border-border/50">
-                              <p className="font-medium text-foreground/90 mb-1 text-xs">Petunjuk Jawaban Kuat:</p>
-                              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/80">{hintContent}</p>
+                          {parsedAssistant.evaluation.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 font-semibold text-foreground">Evaluasi Jawaban</p>
+                              <ul className="space-y-1.5 text-foreground/90">
+                                {parsedAssistant.evaluation.map((point) => (
+                                  <li key={`${message.id}-eval-${point}`} className="flex items-start gap-2 leading-relaxed">
+                                    <span className="mt-1 text-xs text-primary">•</span>
+                                    <span>{point}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {parsedAssistant.questionBody.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 font-semibold text-primary">{parsedAssistant.questionTitle || `Pertanyaan Interview ${index + 1}`}</p>
+                              <div className="space-y-1.5 text-foreground">
+                                {parsedAssistant.questionBody.map((line) => (
+                                  <p key={`${message.id}-question-${line}`} className="whitespace-pre-line leading-relaxed">
+                                    {line}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {parsedAssistant.hintPoints.length > 0 && (
+                            <div className="rounded-lg border border-border/50 bg-background/40 p-3">
+                              <p className="mb-1.5 text-xs font-medium text-foreground/90">Poin Jawaban Kuat</p>
+                              <ul className="space-y-1.5 text-foreground/85">
+                                {parsedAssistant.hintPoints.map((point) => (
+                                  <li key={`${message.id}-hint-${point}`} className="flex items-start gap-2 leading-relaxed">
+                                    <span className="mt-1 text-xs text-primary">•</span>
+                                    <span>{point}</span>
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
                           )}
                         </div>
-                      ) : displayContent ? (
-                        <p className="whitespace-pre-line leading-relaxed text-foreground">{displayContent}</p>
                       ) : (
-                        <p className="leading-relaxed text-foreground/80">Voice answer received.</p>
+                        <p className="whitespace-pre-line leading-relaxed text-foreground">{message.content}</p>
+                      )}
+
+                      {canPlayAudio && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+                          <Button type="button" size="sm" variant="secondary" className="h-8 px-3" onClick={() => toggleMessageAudio(message.id)}>
+                            {isActiveAudio && isPlayingAudio && !isAudioPaused ? <Pause className="mr-1.5 h-3.5 w-3.5" /> : <Play className="mr-1.5 h-3.5 w-3.5" />}
+                            {isActiveAudio && isPlayingAudio && !isAudioPaused ? "Pause" : "Play"}
+                          </Button>
+                          <Button type="button" size="sm" variant="outline" className="h-8 px-3" onClick={() => replayMessageAudio(message.id)}>
+                            <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Replay
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            {isAssistant ? "AI voice" : "Your recording"}
+                            {isActiveAudio && (isPlayingAudio || isAudioPaused) ? ` • ${isAudioPaused ? "paused" : "playing"}` : ""}
+                          </span>
+                        </div>
                       )}
                     </div>
                   );
@@ -580,38 +849,33 @@ const InterviewLite = () => {
               )}
 
               {isThinking && (
-                <div className="rounded-xl border border-border bg-background/60 p-3 text-sm text-muted-foreground flex items-center gap-2">
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-background/60 p-3 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> AI is preparing next turn...
                 </div>
               )}
               {isTtsLoading && (
-                <div className="rounded-xl border border-border bg-background/60 p-3 text-sm text-muted-foreground flex items-center gap-2">
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-background/60 p-3 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Generating voice response...
                 </div>
               )}
-              {isPlayingAudio && (
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-primary flex items-center gap-2">
-                  <Volume2 className="h-4 w-4" /> Playing AI voice...
-                  <Button type="button" size="sm" variant="secondary" className="ml-auto h-7 px-2" onClick={toggleAudioPlayback}>
-                    {isAudioPaused ? <Play className="h-3.5 w-3.5 mr-1" /> : <Pause className="h-3.5 w-3.5 mr-1" />}
-                    {isAudioPaused ? "Play" : "Pause"}
-                  </Button>
+              {isPlayingAudio && activeAudioMessageId && (
+                <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
+                  <Volume2 className="h-4 w-4" /> Audio sedang diputar.
                 </div>
               )}
               {isSttLoading && (
-                <div className="rounded-xl border border-border bg-background/60 p-3 text-sm text-muted-foreground flex items-center gap-2">
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-background/60 p-3 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Transcribing speech...
                 </div>
               )}
               <div ref={chatBottomRef} />
             </div>
 
-            <div className="mt-4 border-t border-border pt-4 space-y-3">
+            <div className="mt-4 space-y-3 border-t border-border pt-4">
               {error && <p className="text-sm text-destructive">{error}</p>}
               {queueDepth > 1 && <p className="text-xs text-muted-foreground">Queue: {queueDepth - 1} turn waiting</p>}
 
               {mode === "speech" ? (
-                // ── Speech mode UI ──
                 <div className="flex flex-col items-center gap-3">
                   {!isRecording && !isSttLoading && (
                     <Button
@@ -620,62 +884,54 @@ const InterviewLite = () => {
                       onClick={() => {
                         if (!isAnswering) {
                           setIsAnswering(true);
-                          startRecording();
+                          void startRecording();
                         }
                       }}
-                      disabled={!hasAnalysis || messages.length === 0 || isThinking || isTtsLoading || isPlayingAudio}
+                      disabled={!hasAnalysis || messages.length === 0 || isThinking || isTtsLoading}
                     >
-                      <Mic className="h-4 w-4 mr-2" /> {isAnswering ? "Recording..." : "Hold to Record Answer"}
+                      <Mic className="mr-2 h-4 w-4" /> {isAnswering ? "Recording..." : "Start Recording Answer"}
                     </Button>
                   )}
                   {isRecording && (
-                    <Button
-                      variant="destructive"
-                      className="w-full animate-pulse"
-                      onClick={stopRecordingAndTranscribe}
-                    >
-                      <MicOff className="h-4 w-4 mr-2" /> Stop & Transcribe
+                    <Button variant="destructive" className="w-full animate-pulse" onClick={stopRecordingAndTranscribe}>
+                      <MicOff className="mr-2 h-4 w-4" /> Stop & Send Answer
                     </Button>
                   )}
-                  {isSttLoading && (
-                    <p className="text-xs text-muted-foreground">Sending audio to Azure Speech...</p>
-                  )}
+                  {isSttLoading && <p className="text-xs text-muted-foreground">Sending audio to Azure Speech...</p>}
                 </div>
+              ) : !isAnswering ? (
+                <Button variant="outline" className="w-full" onClick={() => setIsAnswering(true)} disabled={!hasAnalysis || messages.length === 0 || isThinking}>
+                  <Mic className="mr-2 h-4 w-4" /> Press to Answer
+                </Button>
               ) : (
-                // ── Text mode UI ──
-                !isAnswering ? (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setIsAnswering(true)}
-                    disabled={!hasAnalysis || messages.length === 0 || isThinking}
-                  >
-                    <Mic className="h-4 w-4 mr-2" /> Press to Answer
-                  </Button>
-                ) : (
-                  <>
-                    <Textarea
-                      value={draftAnswer}
-                      onChange={(e) => setDraftAnswer(e.target.value)}
-                      placeholder="Type your answer here..."
-                      className="min-h-[120px]"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && draftAnswer.trim()) {
-                          e.preventDefault();
-                          sendAnswer();
-                        }
+                <>
+                  <Textarea
+                    value={draftAnswer}
+                    onChange={(event) => setDraftAnswer(event.target.value)}
+                    placeholder="Type your answer here..."
+                    className="min-h-[120px]"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && draftAnswer.trim()) {
+                        event.preventDefault();
+                        void sendAnswer();
+                      }
+                    }}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsAnswering(false);
+                        setDraftAnswer("");
                       }}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button variant="outline" onClick={() => { setIsAnswering(false); setDraftAnswer(""); }}>
-                        Cancel
-                      </Button>
-                      <Button onClick={() => sendAnswer()} disabled={isThinking || !draftAnswer.trim()}>
-                        <Send className="h-4 w-4 mr-2" /> Send to AI
-                      </Button>
-                    </div>
-                  </>
-                )
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={() => void sendAnswer()} disabled={isThinking || !draftAnswer.trim()}>
+                      <Send className="mr-2 h-4 w-4" /> Send to AI
+                    </Button>
+                  </div>
+                </>
               )}
             </div>
           </div>

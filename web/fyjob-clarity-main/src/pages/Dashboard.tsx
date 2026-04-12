@@ -4,11 +4,13 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import MatchGauge from "@/components/MatchGauge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart3, Target, Swords, ArrowRight, TrendingUp, Clock, Zap, Shield } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserStats, UserStats } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { useNavigate } from "react-router-dom";
 
 const anim = (delay: number) => ({
@@ -32,6 +34,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [previewItem, setPreviewItem] = useState<UserStats['recent_analyses'][number] | null>(null);
+  const [showWelcomeNotice, setShowWelcomeNotice] = useState(false);
 
   useEffect(() => {
     // Only fetch when session is confirmed
@@ -41,6 +44,21 @@ const Dashboard = () => {
       try {
         const data = await getUserStats();
         setStats(data);
+        setShowWelcomeNotice(Boolean(data?.welcome_notice));
+
+        const hasWelcomed = Boolean(user?.user_metadata?.fyjob_welcomed);
+        if (data?.welcome_notice && !hasWelcomed) {
+          try {
+            await supabase.auth.updateUser({
+              data: {
+                ...(user?.user_metadata || {}),
+                fyjob_welcomed: true,
+              },
+            });
+          } catch (metaErr) {
+            console.warn("Failed to persist fyjob_welcomed metadata", metaErr);
+          }
+        }
       } catch (error) {
         console.error("Failed to fetch user stats", error);
       } finally {
@@ -116,6 +134,22 @@ const Dashboard = () => {
           </div>
         )}
       </motion.div>
+
+      {showWelcomeNotice && stats?.welcome_notice && (
+        <Alert className="border-primary/30 bg-primary/10">
+          <AlertDescription className="text-sm text-foreground">
+            {stats.welcome_notice}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {stats?.plan_expiry_notice && (
+        <Alert className="border-warning/40 bg-warning/10">
+          <AlertDescription className="text-sm text-foreground">
+            {stats.plan_expiry_notice}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

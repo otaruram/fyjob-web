@@ -304,6 +304,32 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             except Exception:
                 plan_expiry_notice = None
 
+        welcome_notice = None
+        should_persist_welcome_seen = False
+        welcome_seen_at = user.get("onboarding_welcome_seen_at")
+        if not welcome_seen_at and not is_admin:
+            try:
+                created_at_raw = user.get("created_at")
+                created_at = datetime.fromisoformat(created_at_raw) if created_at_raw else datetime.now(timezone.utc)
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - created_at.astimezone(timezone.utc)
+                if age <= timedelta(days=3):
+                    welcome_notice = (
+                        "Welcome to FYJOB. Mulai dari scan 1 lowongan, lalu generate quiz dan learning path biar progresmu cepat kebaca."
+                    )
+                should_persist_welcome_seen = True
+            except Exception:
+                should_persist_welcome_seen = True
+
+        if should_persist_welcome_seen:
+            try:
+                users_container = get_container("Users")
+                user["onboarding_welcome_seen_at"] = datetime.utcnow().isoformat()
+                users_container.upsert_item(user)
+            except Exception as e:
+                logging.warning(f"Failed to persist onboarding_welcome_seen_at: {e}")
+
         # ── Security email on first login of the day (if user opted in) ──────
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if (
@@ -329,6 +355,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "plan": plan,
             "plan_expires_at": plan_expires_at if plan in ("basic", "pro") else None,
             "plan_expiry_notice": plan_expiry_notice,
+            "welcome_notice": welcome_notice,
             "interview_access": {
                 "quality": "deep" if (is_admin or plan == "pro") else "lite",
                 "speech_enabled": bool(is_admin or plan == "pro"),

@@ -9,6 +9,7 @@ Actions:
 import hashlib
 import os
 import base64
+import re
 from datetime import datetime, timedelta
 
 import azure.functions as func
@@ -24,17 +25,22 @@ from shared.cosmos_client import (
     get_effective_plan,
 )
 from shared.llm_service import call_llm, MODEL_GEMINI_FLASH, MODEL_GEMINI_PRO, MODEL_GEMINI_3_PRO
+from shared.redis_cache import hash_text
 
 try:
     import redis
 except Exception:  # pragma: no cover
     redis = None
 
-TEXT_SESSION_COST = int(os.environ.get("INTERVIEW_TEXT_SESSION_COST", "2"))
-SPEECH_SESSION_COST = int(os.environ.get("INTERVIEW_SPEECH_SESSION_COST", "3"))
+TEXT_SESSION_COST = max(1, int(os.environ.get("INTERVIEW_TEXT_SESSION_COST", "2")))
+SPEECH_SESSION_COST = max(3, int(os.environ.get("INTERVIEW_SPEECH_SESSION_COST", "3")))
 MAX_QUESTIONS_PER_SESSION = int(os.environ.get("INTERVIEW_MAX_QUESTIONS", "5"))
 LOCK_TTL_SEC = int(os.environ.get("INTERVIEW_LOCK_TTL_SEC", "30"))
 TURN_CACHE_TTL_SEC = int(os.environ.get("INTERVIEW_TURN_CACHE_TTL_SEC", "600"))
+START_CACHE_TTL_SEC = int(os.environ.get("INTERVIEW_START_CACHE_TTL_SEC", "1800"))
+SUMMARY_CACHE_TTL_SEC = int(os.environ.get("INTERVIEW_SUMMARY_CACHE_TTL_SEC", "1800"))
+STT_CACHE_TTL_SEC = int(os.environ.get("INTERVIEW_STT_CACHE_TTL_SEC", "1800"))
+TTS_CACHE_TTL_SEC = int(os.environ.get("INTERVIEW_TTS_CACHE_TTL_SEC", "7200"))
 MAX_TURNS = int(os.environ.get("INTERVIEW_MAX_TURNS", "12"))
 START_RATE_LIMIT_WINDOW_SEC = int(os.environ.get("INTERVIEW_START_RATE_LIMIT_WINDOW_SEC", "600"))
 START_RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("INTERVIEW_START_RATE_LIMIT_MAX_REQUESTS", "3"))
@@ -181,7 +187,226 @@ def _hash_turn(session_id: str, answer_text: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _build_system_prompt(language: str, mode: str, context: str, max_questions: int, quality: str) -> str:
+def _clean_interview_line(value: str) -> str:
+    cleaned = (value or "").replace("\r", "\n")
+    cleaned = re.sub(r"[*_#`~]+", "", cleaned)
+    cleaned = cleaned.replace("•", " ")
+    cleaned = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"^[\-:;,.\s]+", "", cleaned)
+    return cleaned.strip()
+
+
+def _split_points(value: str, max_points: int = 3):
+    raw = (value or "").replace("\r", "\n")
+    chunks = []
+    for line in raw.splitlines():
+        normalized = _clean_interview_line(line)
+        if not normalized:
+            continue
+        parts = re.split(r"\s*[;|]\s*|(?<=[.!?])\s+(?=[A-Z0-9])", normalized)
+        for part in parts:
+            item = _clean_interview_line(part)
+            if item:
+                chunks.append(item)
+            if len(chunks) >= max_points:
+                return chunks[:max_points]
+    return chunks[:max_points]
+
+
+def _infer_role_family(context: str) -> str:
+    lowered = (context or "").lower()
+    role_keywords = {
+        "housekeeping": ["housekeeping", "room attendant", "public area attendant", "cleaner", "cleaning service", "steward"],
+        "admin": ["admin", "administrasi", "administration", "data entry", "office assistant", "secretary", "receptionist"],
+        "cashier": ["cashier", "kasir", "point of sale", "pos", "payment counter"],
+        "warehouse": ["warehouse", "gudang", "picker", "packer", "forklift", "inventory control", "logistics"],
+    }
+    for role_family, keywords in role_keywords.items():
+        if any(keyword in lowered for keyword in keywords):
+            return role_family
+    return "general"
+
+
+def _role_strictness_prompt(role_family: str) -> str:
+    prompts = {
+        "housekeeping": (
+            "Be strict for housekeeping roles. Reject vague answers that do not mention SOP order, hygiene control, chemical safety, linen handling, contamination prevention, final room check, and readiness standard."
+        ),
+        "admin": (
+            "Be strict for admin roles. Reject vague answers that do not mention document accuracy, filing flow, spreadsheet/system use, verification steps, deadline handling, escalation path, and error prevention."
+        ),
+        "cashier": (
+            "Be strict for cashier roles. Reject vague answers that do not mention transaction accuracy, payment validation, counterfeit handling, shift reconciliation, POS procedure, customer queue handling, and cash discrepancy control."
+        ),
+        "warehouse": (
+            "Be strict for warehouse roles. Reject vague answers that do not mention receiving/putaway/picking/packing flow, stock accuracy, barcode or scan discipline, FIFO/FEFO, safety rules, and mismatch handling."
+        ),
+    }
+    return prompts.get(role_family, "Be strict. Reject generic answers that lack step-by-step process, accuracy checks, safety, and measurable output.")
+
+
+def _role_specific_eval_points(role_family: str):
+    defaults = {
+        "housekeeping": [
+            "Untuk role housekeeping, jawaban harus menyebut urutan SOP kerja, bahan yang dipakai, dan kontrol kebersihan. Jika itu tidak ada, jawaban masih lemah.",
+            "Tekankan detail teknis seperti ventilasi, stripping linen, pembersihan bathroom, disinfeksi titik sentuh, dan final room inspection.",
+        ],
+        "admin": [
+            "Untuk role admin, jawaban harus menunjukkan alur kerja yang rapi, teliti, dan bisa diaudit. Jika hanya umum, itu belum cukup.",
+            "Jawaban perlu menyebut verifikasi data, pengecekan dokumen, prioritas deadline, dan cara mencegah salah input atau file hilang.",
+        ],
+        "cashier": [
+            "Untuk role cashier, jawaban harus fokus pada akurasi transaksi dan kontrol selisih. Jawaban yang terlalu umum belum aman secara operasional.",
+            "Sebut prosedur validasi pembayaran, penanganan uang tunai, pengecekan nominal, dan closing kas agar evaluasi dianggap kuat.",
+        ],
+        "warehouse": [
+            "Untuk role warehouse, jawaban harus menjelaskan alur kerja fisik dengan disiplin proses. Jawaban umum tanpa urutan kerja belum layak.",
+            "Sebut receiving, scanning, putaway, picking, packing, stock check, serta kontrol mismatch dan keselamatan kerja.",
+        ],
+        "general": [
+            "Jawaban masih terlalu umum dan belum menunjukkan proses kerja yang bisa dieksekusi di lapangan.",
+            "Perjelas langkah, kontrol risiko, dan standar hasil agar jawaban lebih meyakinkan.",
+        ],
+    }
+    return defaults.get(role_family, defaults["general"])
+
+
+def _role_specific_hint_points(role_family: str):
+    hints = {
+        "housekeeping": [
+            "Jelaskan urutan SOP kerja dari awal sampai final check.",
+            "Sebut bahan, alat, dan standar higienitas yang dipakai.",
+            "Tutup dengan cara memastikan kamar siap dipakai tamu.",
+        ],
+        "admin": [
+            "Susun alur kerja administrasi secara runtut dari input sampai arsip.",
+            "Sebut langkah verifikasi untuk mencegah salah data atau dokumen tertukar.",
+            "Jelaskan cara menjaga ketepatan waktu dan akurasi hasil.",
+        ],
+        "cashier": [
+            "Jelaskan alur transaksi dari menerima pesanan sampai pembayaran selesai.",
+            "Sebut langkah validasi nominal, metode bayar, dan bukti transaksi.",
+            "Tutup dengan cara menangani selisih kas atau komplain pelanggan.",
+        ],
+        "warehouse": [
+            "Jelaskan alur receiving, putaway, picking, atau packing secara runtut.",
+            "Sebut kontrol akurasi stok, scan barcode, dan aturan FIFO atau FEFO bila relevan.",
+            "Jelaskan tindakan saat ada mismatch, barang rusak, atau risiko keselamatan.",
+        ],
+        "general": [
+            "Gunakan langkah kerja yang runtut dan spesifik.",
+            "Sebut alasan teknis, kontrol risiko, dan trade-off.",
+            "Tutup dengan hasil yang terukur atau standar keberhasilan.",
+        ],
+    }
+    return hints.get(role_family, hints["general"])
+
+
+def _extract_structured_sections(value: str):
+    sections = {
+        "evaluation": [],
+        "follow_up": [],
+        "question": [],
+        "hint": [],
+    }
+    current_key = None
+    heading_map = {
+        "evaluasi jawaban": "evaluation",
+        "tindak lanjut": "follow_up",
+        "pertanyaan interview": "question",
+        "poin jawaban kuat": "hint",
+        "petunjuk jawaban kuat": "hint",
+    }
+
+    for raw_line in (value or "").replace("\r", "\n").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        candidate = re.sub(r"[*_#`~]+", "", line).strip()
+        lowered = candidate.lower()
+
+        matched_key = None
+        matched_prefix = None
+        for prefix, key in heading_map.items():
+            if lowered.startswith(prefix):
+                matched_key = key
+                matched_prefix = prefix
+                break
+
+        if matched_key:
+            current_key = matched_key
+            remainder = candidate[len(matched_prefix):].lstrip(" :.-") if matched_prefix else ""
+            cleaned_remainder = _clean_interview_line(remainder)
+            if cleaned_remainder:
+                sections[current_key].append(cleaned_remainder)
+            continue
+
+        cleaned_line = _clean_interview_line(candidate)
+        if cleaned_line and current_key:
+            sections[current_key].append(cleaned_line)
+
+    return {key: "\n".join(values).strip() for key, values in sections.items()}
+
+
+def _format_interview_question(question_text: str, hint_text: str, question_number: int) -> str:
+    question = _clean_interview_line(question_text) or "Jelaskan pendekatan teknis Anda secara runtut, detail, dan terukur."
+    hint_points = _split_points(hint_text, max_points=3) or [
+        "Jelaskan langkah kerja secara runtut.",
+        "Sebutkan alasan teknis dan trade-off utama.",
+        "Tutup dengan hasil atau standar kualitas yang diharapkan.",
+    ]
+    lines = [
+        f"Pertanyaan Interview {question_number}:",
+        question,
+        "",
+        "Poin Jawaban Kuat:",
+    ]
+    lines.extend([f"• {point}" for point in hint_points])
+    return "\n".join(lines).strip()
+
+
+def _format_interview_turn_response(value: str, next_question: int, max_questions: int, role_family: str = "general") -> str:
+    sections = _extract_structured_sections(value)
+    evaluation_source = "\n".join(
+        filter(
+            None,
+            [
+                sections.get("evaluation", ""),
+                sections.get("follow_up", ""),
+            ],
+        )
+    )
+    evaluation_points = _split_points(evaluation_source, max_points=3)
+    if len(evaluation_points) < 2:
+        evaluation_points = list(evaluation_points) + _role_specific_eval_points(role_family)
+    evaluation_points = evaluation_points[:3]
+    question_text = sections.get("question", "") or (
+        f"Lanjut ke pertanyaan {next_question}/{max_questions}. Jelaskan cara Anda menangani masalah teknis kompleks secara runtut dari analisis sampai validasi hasil."
+    )
+    hint_text = sections.get("hint", "")
+    hint_points = _split_points(hint_text, max_points=3) if hint_text else []
+    if len(hint_points) < 2:
+        hint_points = _role_specific_hint_points(role_family)
+
+    lines = ["Evaluasi Jawaban:"]
+    lines.extend([f"• {point}" for point in evaluation_points])
+    lines.extend(["", f"Pertanyaan Interview {next_question}:", _clean_interview_line(question_text), "", "Poin Jawaban Kuat:"])
+    lines.extend([f"• {point}" for point in hint_points[:3]])
+    return "\n".join(lines).strip()
+
+
+def _format_interview_completion(max_questions: int) -> str:
+    return "\n".join(
+        [
+            "Evaluasi Jawaban:",
+            f"• Sesi technical interview selesai sampai pertanyaan {max_questions}/{max_questions}.",
+            "• Akhiri sesi sekarang untuk melihat ringkasan kekuatan, gap, dan tindak lanjut yang lebih tegas.",
+        ]
+    ).strip()
+
+
+def _build_system_prompt(language: str, mode: str, context: str, max_questions: int, quality: str, role_family: str = "general") -> str:
     lang_hint = LANGUAGE_HINT.get(language, LANGUAGE_HINT["id"])
     mode_hint = MODE_HINT.get(mode, MODE_HINT["text"])
     depth_instruction = (
@@ -193,14 +418,23 @@ def _build_system_prompt(language: str, mode: str, context: str, max_questions: 
         "You are FYJOB Interview Lite. Ask technical interview questions only (no behavioral questions). "
         f"The total interview has exactly {max_questions} technical questions. "
         "At interview start, return this exact format:\n"
-        "**Pertanyaan Interview:** [question text]\n"
-        "**Petunjuk Jawaban Kuat:** [hint for a strong answer]\n\n"
+        "Pertanyaan Interview 1: [question text]\n"
+        "Poin Jawaban Kuat:\n"
+        "• [practical point 1]\n"
+        "• [practical point 2]\n"
+        "• [practical point 3]\n\n"
         "After the candidate answers, first evaluate their answer briefly, then ask the next question with this exact format:\n"
-        "**Evaluasi Jawaban:** [brief evaluation of strengths and misses]\n"
-        "**Tindak Lanjut:** [one short practical improvement tip]\n"
-        "**Pertanyaan Interview:** [next technical question]\n"
-        "**Petunjuk Jawaban Kuat:** [hint for a strong answer]\n\n"
+        "Evaluasi Jawaban:\n"
+        "• [brief technical strength or gap]\n"
+        "• [one direct practical improvement]\n\n"
+        "Pertanyaan Interview <n>: [next technical question]\n"
+        "Poin Jawaban Kuat:\n"
+        "• [practical point 1]\n"
+        "• [practical point 2]\n"
+        "• [practical point 3]\n\n"
         "Each question must be specific to the user's CV + selected analysis context and feel like real engineering interview drills.\n"
+        "Do not use markdown, asterisks, underscores, hashtags, dashes as bullets, or decorative symbols. Use only plain text headings and bullet symbol •.\n"
+        f"{_role_strictness_prompt(role_family)}\n"
         f"{depth_instruction}\n"
         f"{lang_hint}\n"
         f"{mode_hint}\n"
@@ -211,8 +445,10 @@ def _build_system_prompt(language: str, mode: str, context: str, max_questions: 
 
 def _session_cost_by_mode(mode: str, profile: dict) -> int:
     if (mode or "").strip().lower() == "speech":
-        return int(profile.get("speech_cost", max(0, SPEECH_SESSION_COST)))
-    return int(profile.get("text_cost", max(0, TEXT_SESSION_COST)))
+        speech_cost = int(profile.get("speech_cost", SPEECH_SESSION_COST))
+        return max(3, speech_cost) if speech_cost > 0 else 0
+    text_cost = int(profile.get("text_cost", TEXT_SESSION_COST))
+    return max(1, text_cost) if text_cost > 0 else 0
 
 
 def _load_analysis_context(user_id: str, analysis_id: str, user_doc: dict) -> str:
@@ -399,6 +635,17 @@ def _stt_action(user_id: str, email: str, body: dict):
     if not audio_base64:
         return error_response("audioBase64 is required", 400)
 
+    r = _redis_client()
+    stt_cache_key = None
+    if r:
+        try:
+            stt_cache_key = f"fyjob:interview:stt:{hash_text(user_id, language, content_type or SPEECH_STT_CONTENT_TYPE, audio_base64)}"
+            cached_transcript = r.get(stt_cache_key)
+            if cached_transcript:
+                return success_response({"transcriptText": cached_transcript, "cached": True})
+        except Exception:
+            stt_cache_key = None
+
     try:
         transcript = _speech_to_text(audio_base64, language, content_type=content_type)
     except ValueError as e:
@@ -406,7 +653,13 @@ def _stt_action(user_id: str, email: str, body: dict):
     except Exception as e:
         return error_response(str(e), 502)
 
-    return success_response({"transcriptText": transcript})
+    if r and stt_cache_key:
+        try:
+            r.setex(stt_cache_key, max(60, STT_CACHE_TTL_SEC), transcript)
+        except Exception:
+            pass
+
+    return success_response({"transcriptText": transcript, "cached": False})
 
 
 def _tts_action(user_id: str, email: str, body: dict):
@@ -420,6 +673,23 @@ def _tts_action(user_id: str, email: str, body: dict):
     if not text:
         return error_response("text is required", 400)
 
+    r = _redis_client()
+    tts_cache_key = None
+    if r:
+        try:
+            tts_cache_key = f"fyjob:interview:tts:{hash_text(language, text.strip())}"
+            cached_audio = r.get(tts_cache_key)
+            if cached_audio:
+                return success_response(
+                    {
+                        "audioBase64": cached_audio,
+                        "outputFormat": SPEECH_TTS_OUTPUT_FORMAT,
+                        "cached": True,
+                    }
+                )
+        except Exception:
+            tts_cache_key = None
+
     try:
         audio_base64 = _text_to_speech(text, language)
     except ValueError as e:
@@ -427,10 +697,17 @@ def _tts_action(user_id: str, email: str, body: dict):
     except Exception as e:
         return error_response(str(e), 502)
 
+    if r and tts_cache_key:
+        try:
+            r.setex(tts_cache_key, max(60, TTS_CACHE_TTL_SEC), audio_base64)
+        except Exception:
+            pass
+
     return success_response(
         {
             "audioBase64": audio_base64,
             "outputFormat": SPEECH_TTS_OUTPUT_FORMAT,
+            "cached": False,
         }
     )
 
@@ -479,25 +756,47 @@ def _start_session(user_id: str, email: str, body: dict):
         except Exception:
             pass
 
-    system_prompt = _build_system_prompt(language, mode, context, max_questions=max_questions, quality=quality_mode)
-    first_turn = call_llm(
-        [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": (
-                    f"Start technical question 1/{max_questions} now. "
-                    "Use the required output format exactly."
-                ),
-            },
-        ],
-        model=model_to_use,
-        max_tokens=question_max_tokens,
-        temperature=0.6,
-    )
+    role_family = _infer_role_family(context)
+    system_prompt = _build_system_prompt(language, mode, context, max_questions=max_questions, quality=quality_mode, role_family=role_family)
+    r = _redis_client()
+    start_cache_key = f"fyjob:interview:start:{hash_text(user_id, analysis_id, language, mode, plan, quality_mode, max_questions, model_to_use)}"
+    first_turn = None
+    if r:
+        try:
+            first_turn = r.get(start_cache_key)
+        except Exception:
+            first_turn = None
+
+    if not first_turn:
+        first_turn = call_llm(
+            [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Start technical question 1/{max_questions} now. "
+                        "Use the required output format exactly."
+                    ),
+                },
+            ],
+            model=model_to_use,
+            max_tokens=question_max_tokens,
+            temperature=0.6,
+        )
+        if r and first_turn and first_turn.strip():
+            try:
+                r.setex(start_cache_key, max(60, START_CACHE_TTL_SEC), first_turn)
+            except Exception:
+                pass
 
     if not first_turn or not first_turn.strip():
         return error_response("Failed to generate first interview question", 500)
+
+    first_turn = _format_interview_question(
+        _extract_structured_sections(first_turn).get("question", first_turn),
+        _extract_structured_sections(first_turn).get("hint", first_turn),
+        1,
+    )
 
     session_id = f"interview_{user_id}_{datetime.utcnow().timestamp()}"
     now = _utc_now_iso()
@@ -516,6 +815,7 @@ def _start_session(user_id: str, email: str, body: dict):
         "turn_count": 1,
         "plan": plan,
         "quality": quality_mode,
+        "role_family": role_family,
         "max_questions": max_questions,
         "max_turns": max_turns,
         "model": model_to_use,
@@ -633,10 +933,7 @@ def _turn_session(user_id: str, email: str, body: dict):
 
         # If user just answered the final question, close question flow without generating question 6.
         if current_question >= session_max_questions:
-            assistant_text = (
-                f"**Pertanyaan Interview:** Sesi technical interview selesai ({session_max_questions}/{session_max_questions}).\n"
-                "**Petunjuk Jawaban Kuat:** Klik End Interview untuk melihat ringkasan kekuatan, gap, dan next action Anda."
-            )
+            assistant_text = _format_interview_completion(session_max_questions)
             history.extend(
                 [
                     {"role": "user", "content": answer_text, "ts": now},
@@ -665,12 +962,14 @@ def _turn_session(user_id: str, email: str, body: dict):
             )
 
         context = _load_analysis_context(user_id, session.get("analysisId"), user)
+        role_family = str(session.get("role_family") or _infer_role_family(context) or "general")
         system_prompt = _build_system_prompt(
             session.get("language", "id"),
             session.get("mode", "text"),
             context,
             max_questions=session_max_questions,
             quality=session_quality,
+            role_family=role_family,
         )
 
         next_question = current_question + 1
@@ -698,11 +997,18 @@ def _turn_session(user_id: str, email: str, body: dict):
         )
         if not assistant_text or not assistant_text.strip():
             assistant_text = (
-                "**Evaluasi Jawaban:** Jawaban Anda sudah punya arah, tapi masih kurang detail teknis dan trade-off yang dipilih.\n"
-                "**Tindak Lanjut:** Tambahkan alasan teknis, metrik hasil, dan risiko dari pendekatan Anda.\n"
-                f"**Pertanyaan Interview:** Jelaskan bagaimana Anda memecah masalah teknis kompleks untuk pertanyaan {next_question}/{session_max_questions}.\n"
-                "**Petunjuk Jawaban Kuat:** Gunakan struktur langkah, trade-off, dan metrik dampak."
+                "Evaluasi Jawaban:\n"
+                "• Jawaban Anda sudah punya arah, tetapi detail teknis dan trade-off masih kurang jelas.\n"
+                "• Tambahkan alasan teknis, risiko utama, dan indikator hasil agar jawaban lebih kuat.\n\n"
+                f"Pertanyaan Interview {next_question}:\n"
+                "Jelaskan bagaimana Anda memecah masalah teknis kompleks dari analisis, eksekusi, sampai validasi hasil.\n\n"
+                "Poin Jawaban Kuat:\n"
+                "• Susun langkah kerja secara runtut.\n"
+                "• Jelaskan trade-off dan risiko utama.\n"
+                "• Tutup dengan hasil yang bisa diukur."
             )
+
+        assistant_text = _format_interview_turn_response(assistant_text, next_question, session_max_questions, role_family=role_family)
 
         history.extend(
             [
@@ -762,15 +1068,25 @@ def _end_session(user_id: str, body: dict):
         "Do not use markdown, bullets, asterisks, underscores, or special symbols."
     )
 
-    summary = call_llm(
-        [
-            {"role": "system", "content": "You are a FAANG interview coach. Keep response concise."},
-            {"role": "user", "content": f"{summary_prompt}\n\n{transcript}"},
-        ],
-        model=session.get("model", MODEL_GEMINI_FLASH),
-        max_tokens=int(session.get("summary_max_tokens", 450)),
-        temperature=0.4,
-    )
+    r = _redis_client()
+    summary_cache_key = f"fyjob:interview:summary:{hash_text(user_id, session.get('analysisId', ''), transcript[-4000:])}"
+    summary = None
+    if r:
+        try:
+            summary = r.get(summary_cache_key)
+        except Exception:
+            summary = None
+
+    if not summary:
+        summary = call_llm(
+            [
+                {"role": "system", "content": "You are a FAANG interview coach. Keep response concise."},
+                {"role": "user", "content": f"{summary_prompt}\n\n{transcript}"},
+            ],
+            model=session.get("model", MODEL_GEMINI_FLASH),
+            max_tokens=int(session.get("summary_max_tokens", 450)),
+            temperature=0.4,
+        )
 
     if not summary:
         summary = (
@@ -790,6 +1106,12 @@ def _end_session(user_id: str, body: dict):
         return "\n".join(lines).strip()
 
     summary = _sanitize_plain_text(summary)
+
+    if r and summary:
+        try:
+            r.setex(summary_cache_key, max(60, SUMMARY_CACHE_TTL_SEC), summary)
+        except Exception:
+            pass
 
     score = 0
     for line in summary.splitlines():

@@ -139,6 +139,8 @@ export interface UserStats {
   role: 'admin' | 'user';
   plan?: 'free' | 'basic' | 'pro' | 'admin';
   plan_expires_at?: string | null;
+  plan_expiry_notice?: string | null;
+  welcome_notice?: string | null;
   interview_access?: {
     quality: 'lite' | 'deep';
     speech_enabled: boolean;
@@ -333,7 +335,7 @@ export const chatWithUjang = (
 
 /** POST /api/generate-quiz */
 export const generateQuiz = (analysisId: string) =>
-  fetchApi<{ quiz: QuizData; analysis_id: string; credits_remaining: number }>(
+  fetchApi<{ quiz: QuizData; analysis_id: string; credits_remaining: number; cached?: boolean; cache_source?: string }>(
     '/api/generate-quiz', 'POST', { analysisId }
   );
 
@@ -519,7 +521,7 @@ export const createPaymentTransaction = (
   plan: 'basic' | 'pro',
   successUrl?: string,
   cancelUrl?: string,
-  paymentType: 'qris' | 'gopay' | 'bni_va' | 'bri_va' | 'permata_va' | 'cimb_niaga_va' | 'shopeepay' = 'qris'
+  paymentType: 'qris' | 'gopay' = 'qris'
 ) =>
   fetchApi<CreateTransactionResult>('/api/payment', 'POST', {
     action: 'create',

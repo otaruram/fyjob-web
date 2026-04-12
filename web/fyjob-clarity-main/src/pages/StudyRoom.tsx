@@ -131,7 +131,7 @@ const StudyRoom = () => {
 
   return (
     <DashboardLayout>
-      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-4 sm:gap-6">
+      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-4 sm:gap-6 overflow-x-hidden">
         
         {/* Sidebar: Job Selector */}
         <div className="lg:w-[340px] shrink-0 flex flex-col gap-3 sm:gap-4">
@@ -157,10 +157,10 @@ const StudyRoom = () => {
                       className={`p-3 sm:p-4 rounded-xl border cursor-pointer transition-all flex flex-col ${selectedAnalysis?.id === h.id ? 'bg-primary/10 border-primary ring-1 ring-primary/30' : 'bg-card border-border hover:border-primary/50 text-muted-foreground'}`}
                  >
                     <div className="flex justify-between items-start mb-1">
-                        <span className={`font-semibold text-xs sm:text-sm truncate pr-2 ${selectedAnalysis?.id === h.id ? 'text-foreground' : ''}`}>{h.jobTitle}</span>
+                        <span className={`font-semibold text-xs sm:text-sm pr-2 break-words ${selectedAnalysis?.id === h.id ? 'text-foreground' : ''}`}>{h.jobTitle}</span>
                         <span className="text-[10px] whitespace-nowrap opacity-60 mt-0.5">{new Date(h.created_at).toLocaleDateString()}</span>
                     </div>
-                      <span className="text-[11px] sm:text-xs opacity-80 mb-3 truncate">{h.portal}</span>
+                      <span className="text-[11px] sm:text-xs opacity-80 mb-3 break-words">{h.portal}</span>
                     <div className="flex items-center justify-between mt-auto">
                        {h.has_learning_path ? (
                           <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/30 px-1.5 py-0 h-5">Path Ready</Badge>
@@ -277,10 +277,10 @@ const StudyRoom = () => {
                                   <Badge variant="outline" className="mb-2 bg-primary/10 text-primary border-primary/20 text-[10px] uppercase font-semibold">
                                      Gap: {step.skill_gap}
                                   </Badge>
-                                  <h3 className={`text-sm sm:text-base font-semibold ${done ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                                  <h3 className={`text-sm sm:text-base font-semibold break-words ${done ? "line-through text-muted-foreground" : "text-foreground"}`}>
                                     {step.topic}
                                   </h3>
-                                  <p className="text-xs sm:text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                                  <p className="text-xs sm:text-sm text-muted-foreground mt-1.5 leading-relaxed break-words">
                                     {step.description}
                                   </p>
                                   <div className="flex items-center gap-3 mt-4 flex-wrap">
@@ -296,15 +296,15 @@ const StudyRoom = () => {
                                    <div className="mt-4 pt-3 border-t border-border/50 flex flex-col gap-2">
                                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Recommended Resources</span>
                                      {step.resources.map((r, idx) => (
-                                      <div key={`${step.path_number}-${r.title || "resource"}-${idx}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded-lg bg-background/40 hover:bg-background/80 border border-transparent hover:border-border transition-colors">
+                                        <div key={`${step.path_number}-${r.title || "resource"}-${idx}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded-lg bg-background/40 hover:bg-background/80 border border-transparent hover:border-border transition-colors">
                                           <div className="flex items-center gap-2">
                                              <div className="p-1.5 bg-card border border-border rounded text-muted-foreground shrink-0">
                                                 {resourceIcon(r.type)}
                                              </div>
                                              <div>
-                                            <div className="text-[11px] sm:text-xs font-medium text-foreground">{r.title}</div>
+                                            <div className="text-[11px] sm:text-xs font-medium text-foreground break-words">{r.title}</div>
                                                 {(r.platform || r.description) && (
-                                              <div className="text-[10px] text-muted-foreground mt-0.5 max-w-[280px] truncate">
+                                             <div className="text-[10px] text-muted-foreground mt-0.5 break-words sm:max-w-[280px] sm:truncate">
                                                       {r.platform && <span className="font-semibold">{r.platform} • </span>}
                                                       {r.description}
                                                    </div>
@@ -312,11 +312,11 @@ const StudyRoom = () => {
                                              </div>
                                           </div>
                                           {r.url ? (
-                                          <Button variant="ghost" size="sm" className="h-7 text-[10px] shrink-0 hover:bg-primary/20 hover:text-primary whitespace-nowrap" onClick={() => window.open(r.url, '_blank')}>
+                                          <Button variant="ghost" size="sm" className="h-7 text-[10px] sm:shrink-0 hover:bg-primary/20 hover:text-primary whitespace-nowrap self-start sm:self-center" onClick={() => window.open(r.url, '_blank')}>
                                                 Open Resource <ArrowRight className="w-3 h-3 ml-1" />
                                              </Button>
                                           ) : (
-                                             <span className="text-[10px] text-muted-foreground italic mr-2 whitespace-nowrap">Practice</span>
+                                            <span className="text-[10px] text-muted-foreground italic mr-2 whitespace-nowrap self-start sm:self-center">Practice</span>
                                           )}
                                        </div>
                                      ))}

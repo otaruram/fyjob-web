@@ -292,21 +292,32 @@ def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dic
     except exceptions.CosmosResourceNotFoundError:
         normalized_email = _normalize_email(email)
         is_admin = is_allowed_admin_email(normalized_email)
+        now = datetime.utcnow()
+        trial_expires = (now + timedelta(days=7)).isoformat() if not is_admin else None
         doc = {
             "id": user_id,
             "email": normalized_email,
             "role": "admin" if is_admin else "user",
-            "plan": "pro" if is_admin else "free",
-            "credits_remaining": 999999 if is_admin else get_plan_credit_cap("free"),
-            "last_regen_date": datetime.utcnow().isoformat(),
+            "plan": "pro",
+            "plan_expires_at": trial_expires,
+            "trial_started_at": now.isoformat() if not is_admin else None,
+            "is_trial": not is_admin,
+            "credits_remaining": 999999 if is_admin else get_plan_credit_cap("pro"),
+            "last_regen_date": now.isoformat(),
             "timezone": timezone or "Asia/Jakarta",
             "raw_cv_text": "",
             "cv_filename": "",
             "cv_blob_url": "",
             "cv_page_images": [],
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": now.isoformat()
         }
         container.create_item(doc)
+        if not is_admin and normalized_email:
+            try:
+                from shared.email_service import send_trial_welcome_email
+                send_trial_welcome_email(normalized_email, normalized_email)
+            except Exception as exc:
+                logging.warning(f"Trial welcome email failed: {exc}")
         return doc
 
 
