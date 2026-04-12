@@ -118,11 +118,11 @@ const AdminCenter = () => {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-7xl space-y-5">
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-5">
         <div>
           <p className="terminal-kicker mb-2">admin command center</p>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">FYJOB Admin Center</h1>
-          <p className="text-sm text-muted-foreground mt-1">Ban user, monitor usage, top up token, and track activity patterns.</p>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Ban user, monitor usage, top up token, and track activity patterns.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -159,12 +159,12 @@ const AdminCenter = () => {
                     className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-sm"
                   />
                 </div>
-                <button onClick={handleSearch} className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-card/60">Search</button>
+                <button onClick={handleSearch} className="px-3 sm:px-4 py-2 rounded-lg border border-border text-xs sm:text-sm hover:bg-card/60">Search</button>
               </div>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[760px]">
+              <table className="w-full text-xs sm:text-sm min-w-[700px]">
                 <thead>
                   <tr className="text-left text-muted-foreground border-b border-border">
                     <th className="py-2 pr-2">Email</th>
@@ -179,8 +179,8 @@ const AdminCenter = () => {
                   {users.map((u) => (
                     <tr key={u.id} className="border-b border-border/70">
                       <td className="py-2 pr-2">
-                        <div className="font-medium">{u.email || u.id}</div>
-                        <div className="text-xs text-muted-foreground">{u.id}</div>
+                        <div className="font-medium break-all">{u.email || u.id}</div>
+                        <div className="text-xs text-muted-foreground break-all">{u.id}</div>
                       </td>
                       <td className="py-2 pr-2">{u.role}</td>
                       <td className="py-2 pr-2">{u.role === "admin" ? "∞" : (u.credits_remaining ?? 0)}</td>
@@ -197,7 +197,7 @@ const AdminCenter = () => {
                           />
                           <button
                             onClick={() => handleAddCredits(u)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border hover:bg-card/60"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border hover:bg-card/60"
                           >
                             <Coins className="w-3.5 h-3.5" /> Add
                           </button>
@@ -207,7 +207,7 @@ const AdminCenter = () => {
                         <button
                           onClick={() => handleBanToggle(u)}
                           disabled={u.role === "admin"}
-                          className="px-2.5 py-1 rounded-md border border-border hover:bg-card/60 disabled:opacity-50"
+                          className="px-2 py-1 rounded-md border border-border hover:bg-card/60 disabled:opacity-50"
                         >
                           {u.is_banned ? "Unban" : "Ban"}
                         </button>

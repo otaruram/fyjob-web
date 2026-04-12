@@ -16,7 +16,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     <div className="min-h-screen flex w-full">
       <DashboardSidebar />
       <div className="flex-1 flex flex-col min-w-0">
-          <header className="min-h-16 flex items-center justify-between border-b border-border px-3 sm:px-4 glass-strong sticky top-0 z-30">
+          <header className="min-h-16 flex items-center justify-between border-b border-border px-3 sm:px-4 glass-strong sticky top-0 z-30 gap-2">
            <div className="flex items-center min-w-0">
              <SidebarTrigger className="mr-2 sm:mr-4" />
              <span className="text-xs sm:text-sm font-medium text-foreground tracking-widest uppercase truncate">FYJOB Terminal</span>
@@ -38,7 +38,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
             </button>
           </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 pb-24 sm:pb-6 overflow-y-auto">{children}</main>
       </div>
       <UjangChatPanel />
     </div>

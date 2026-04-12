@@ -77,11 +77,11 @@ const Dashboard = () => {
 
   return (
   <DashboardLayout>
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       {/* Welcome */}
       <motion.div {...anim(0)} className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2 sm:gap-3 flex-wrap">
             {t('dash_welcome')}, {displayName}
             {isAdmin && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-gradient-to-r from-violet-600/20 to-purple-600/20 border border-violet-500/30 text-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.15)]">
@@ -90,14 +90,14 @@ const Dashboard = () => {
               </span>
             )}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
             {t('dash_active_cv')}: 
             {stats?.cv_uploaded ? (
-              <span className="text-primary font-medium flex items-center gap-1 cursor-pointer hover:underline" onClick={() => navigate('/cv-manager')}>
+              <span className="text-primary font-medium flex items-center gap-1 cursor-pointer hover:underline" onClick={() => navigate('/dashboard/cv')}>
                 {stats.cv_filename}
               </span>
             ) : (
-              <span className="text-warning text-xs cursor-pointer hover:underline" onClick={() => navigate('/cv-manager')}>
+              <span className="text-warning text-xs cursor-pointer hover:underline" onClick={() => navigate('/dashboard/cv')}>
                 No CV Uploaded
               </span>
             )}
@@ -106,13 +106,13 @@ const Dashboard = () => {
         
         {/* Next Regen Timer Info */}
         {stats?.next_regen_time && (
-          <div className="flex items-center gap-2 text-xs text-slate-700 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-300 shadow-sm">
+          <div className="flex items-center gap-2 flex-wrap text-[11px] sm:text-xs text-slate-700 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-300 shadow-sm max-w-full">
             <Clock className="w-3.5 h-3.5 text-slate-500" />
             <span className="text-slate-500">Next credit regen (+1): </span>
             <span className="font-mono text-primary font-medium">
               {new Date(stats.next_regen_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </span>
-            <span className="text-slate-400"> ({stats.timezone})</span>
+            <span className="text-slate-400 break-all"> ({stats.timezone})</span>
           </div>
         )}
       </motion.div>
@@ -133,16 +133,16 @@ const Dashboard = () => {
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Job Spotlight */}
-        <motion.div {...anim(0.3)} className="lg:col-span-2 glass rounded-xl p-6 gradient-border">
+        <motion.div {...anim(0.3)} className="lg:col-span-2 glass rounded-xl p-4 sm:p-6 gradient-border">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
             Latest Job Scan
           </h2>
           {topJob ? (
-            <div className="flex flex-col sm:flex-row items-start gap-6">
+            <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
               <div className="flex-1">
-                <h3 className="text-xl font-bold text-foreground">{topJob.jobTitle}</h3>
+                <h3 className="text-lg sm:text-xl font-bold text-foreground">{topJob.jobTitle}</h3>
                 <p className="text-muted-foreground text-sm mt-1 mb-4">{topJob.portal}</p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant={topJob.has_learning_path ? "outline" : "hero"} size="sm" onClick={() => navigate('/study-room')}>
                     {topJob.has_learning_path ? 'View Study Path' : 'Generate Study Path'}
                   </Button>
@@ -166,7 +166,7 @@ const Dashboard = () => {
         </motion.div>
 
         {/* Skill Gaps */}
-        <motion.div {...anim(0.35)} className="glass rounded-xl p-6 gradient-border">
+        <motion.div {...anim(0.35)} className="glass rounded-xl p-4 sm:p-6 gradient-border">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
             Common Skill Gaps
           </h2>
@@ -185,7 +185,7 @@ const Dashboard = () => {
       </div>
 
       {/* Recent Applications */}
-      <motion.div {...anim(0.4)} className="glass rounded-xl p-6 gradient-border">
+      <motion.div {...anim(0.4)} className="glass rounded-xl p-4 sm:p-6 gradient-border">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Analysis History
         </h2>
@@ -245,7 +245,7 @@ const Dashboard = () => {
               <Button variant="ghost" size="sm" onClick={() => setPreviewItem(null)}>Close</Button>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="rounded-lg border border-border bg-background/40 p-3">
                 <p className="text-xs text-muted-foreground">Match Score</p>
                 <p className={`text-xl font-semibold mt-1 ${getScoreColor(previewItem.score)}`}>{previewItem.score}%</p>
