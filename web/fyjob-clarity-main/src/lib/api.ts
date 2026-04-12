@@ -500,10 +500,14 @@ export interface PaymentStatus {
 }
 
 export interface CreateTransactionResult {
-  checkout_url: string;
-  transaction_id: string;
+  checkout_url?: string;
+  transaction_id?: string;
   plan: string;
   amount: number;
+  payment_type?: string;
+  payment_number?: string;
+  qr_string?: string;
+  actions?: Array<{ name?: string; method?: string; url?: string }>;
 }
 
 /** GET /api/payment — get current plan & available plans */

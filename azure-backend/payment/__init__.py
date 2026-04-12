@@ -133,6 +133,50 @@ def _create_louvin_transaction(amount: int, currency: str, label: str, user_id: 
     raise RuntimeError(f"Payment gateway error ({last_status or 0}): {last_text}")
 
 
+def _extract_checkout_url(result: dict) -> str:
+    if not isinstance(result, dict):
+        return ""
+
+    direct = (
+        result.get("checkout_url")
+        or result.get("url")
+        or result.get("redirect_url")
+    )
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+
+    payment = result.get("payment") or {}
+    payment_direct = payment.get("checkout_url") or payment.get("url") or payment.get("redirect_url")
+    if isinstance(payment_direct, str) and payment_direct.strip():
+        return payment_direct.strip()
+
+    raw = payment.get("raw_response") or {}
+    actions = raw.get("actions") if isinstance(raw, dict) else None
+    if isinstance(actions, list):
+        preferred = [
+            "generate-qr-code-v2",
+            "deeplink-redirect",
+            "gopay-deeplink",
+            "web-redirect",
+            "generate-qr-code",
+        ]
+        for name in preferred:
+            for action in actions:
+                if not isinstance(action, dict):
+                    continue
+                if str(action.get("name") or "").strip().lower() == name:
+                    url = action.get("url")
+                    if isinstance(url, str) and url.strip():
+                        return url.strip()
+        for action in actions:
+            if isinstance(action, dict):
+                url = action.get("url")
+                if isinstance(url, str) and url.strip():
+                    return url.strip()
+
+    return ""
+
+
 def _handle_webhook(req: func.HttpRequest) -> func.HttpResponse:
     """
     Louvin.dev webhook — POST /api/payment with action header/query = webhook.
@@ -319,12 +363,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             except RuntimeError as e:
                 return error_response(str(e), 502)
 
+            checkout_url = _extract_checkout_url(result)
+            payment_obj = result.get("payment") if isinstance(result, dict) else {}
+            raw_response = payment_obj.get("raw_response") if isinstance(payment_obj, dict) else {}
+
             return success_response({
-                "checkout_url": result.get("checkout_url") or result.get("url") or result.get("redirect_url"),
-                "transaction_id": result.get("id") or result.get("transaction_id"),
+                "checkout_url": checkout_url,
+                "transaction_id": result.get("id") or result.get("transaction_id") or (result.get("transaction") or {}).get("id"),
                 "plan": plan,
                 "amount": plan_info["amount"],
                 "payment_type": payment_type,
+                "payment_number": (payment_obj or {}).get("payment_number"),
+                "qr_string": (payment_obj or {}).get("qr_string"),
+                "actions": (raw_response or {}).get("actions") if isinstance(raw_response, dict) else None,
             })
 
         if action == "webhook":

@@ -64,6 +64,15 @@ export default function Upgrade() {
       );
       if (result.checkout_url) {
         window.location.href = result.checkout_url;
+      } else if (result.actions?.length) {
+        const actionUrl = result.actions.find((a) => a.url)?.url;
+        if (actionUrl) {
+          window.location.href = actionUrl;
+          return;
+        }
+        throw new Error("Link pembayaran belum tersedia. Coba ganti metode pembayaran.");
+      } else if (result.payment_number || result.qr_string) {
+        throw new Error("Transaksi QR berhasil dibuat, tapi link checkout tidak tersedia. Coba metode pembayaran selain QRIS.");
       } else {
         throw new Error("Checkout URL tidak tersedia");
       }
