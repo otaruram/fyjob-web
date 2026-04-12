@@ -142,6 +142,7 @@ export interface UserStats {
   plan_expiry_notice?: string | null;
   welcome_notice?: string | null;
   interview_access?: {
+    enabled?: boolean;
     quality: 'lite' | 'deep';
     speech_enabled: boolean;
   };

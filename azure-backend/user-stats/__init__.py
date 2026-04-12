@@ -358,6 +358,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "plan_expiry_notice": plan_expiry_notice,
             "welcome_notice": welcome_notice,
             "interview_access": {
+                "enabled": bool(is_admin or plan in ("basic", "pro")),
                 "quality": "deep" if (is_admin or plan == "pro") else "lite",
                 "speech_enabled": bool(is_admin or plan == "pro"),
             },

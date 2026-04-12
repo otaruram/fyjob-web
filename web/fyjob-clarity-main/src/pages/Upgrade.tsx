@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, Sparkles, Loader2, AlertCircle, Crown, Zap } from "lucide-react";
+import { Check, Sparkles, Loader2, AlertCircle, Crown, Zap, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +16,7 @@ const PLAN_ICONS: Record<string, React.ReactNode> = {
 
 export default function Upgrade() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   const [status, setStatus] = useState<PaymentStatus | null>(null);
@@ -118,6 +120,9 @@ export default function Upgrade() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
       >
+        <Button variant="ghost" size="sm" className="mb-2" onClick={() => navigate("/dashboard") }>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
+        </Button>
         <p className="terminal-kicker mb-2">upgrade</p>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
           Pilih Paket Battle Plan

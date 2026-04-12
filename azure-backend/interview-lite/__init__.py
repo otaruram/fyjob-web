@@ -728,6 +728,9 @@ def _start_session(user_id: str, email: str, body: dict):
 
     profile, plan, is_admin = _resolve_interview_profile(user, email)
 
+    if not is_admin and plan == "free":
+        return error_response("Interview Lite hanya untuk Basic/Pro plan. Silakan upgrade terlebih dahulu.", 403)
+
     if mode == "speech" and not is_admin and not bool(profile.get("speech_enabled", False)):
         return error_response("Speech mode is available for Pro plan only", 403)
 

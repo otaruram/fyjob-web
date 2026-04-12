@@ -12,6 +12,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { BarChart3, Target, AlertTriangle, Search, CheckCircle2, Swords, BookOpen, Clock, Bot, ExternalLink, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getAnalysisHistory, getUserStats, UserStats, chatWithUjang, deleteAnalysisHistory } from "@/lib/api";
@@ -104,6 +114,7 @@ const ApplicationHistory = () => {
   const [ujangErrors, setUjangErrors] = useState<Record<string, string>>({});
   const [previewItem, setPreviewItem] = useState<HistoryItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<HistoryItem | null>(null);
 
   useEffect(() => {
     const cache = readUjangCache();
@@ -153,11 +164,6 @@ const ApplicationHistory = () => {
     });
 
   const handleDeleteAnalysis = async (app: HistoryItem) => {
-    const ok = window.confirm(
-      `Delete this analysis for ${app.jobTitle}?\n\nThis will also delete related quiz, learning path, Ujang chat, and telemetry for this analysis.`
-    );
-    if (!ok) return;
-
     try {
       setDeletingId(app.id);
       await deleteAnalysisHistory(app.id);
@@ -182,6 +188,7 @@ const ApplicationHistory = () => {
       alert(error?.message || "Failed to delete analysis");
     } finally {
       setDeletingId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -365,7 +372,7 @@ const ApplicationHistory = () => {
                           variant="ghost"
                           size="sm"
                           className="h-8 text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteAnalysis(app)}
+                          onClick={() => setDeleteTarget(app)}
                           disabled={deletingId === app.id}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -440,7 +447,7 @@ const ApplicationHistory = () => {
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">{app.portal}</p>
                   </div>
                   <button
-                    onClick={() => handleDeleteAnalysis(app)}
+                    onClick={() => setDeleteTarget(app)}
                     disabled={deletingId === app.id}
                     className="rounded-md p-1.5 text-destructive hover:bg-destructive/10"
                     aria-label="Delete analysis"
@@ -528,6 +535,32 @@ const ApplicationHistory = () => {
           </div>
         </div>
       )}
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus riwayat analisis?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `Riwayat untuk \"${deleteTarget.jobTitle}\" akan dihapus permanen, termasuk quiz, learning path, Ujang chat, dan telemetry terkait.`
+                : "Data analisis akan dihapus permanen."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTarget) {
+                  void handleDeleteAnalysis(deleteTarget);
+                }
+              }}
+            >
+              {deletingId && deleteTarget?.id === deletingId ? "Menghapus..." : "Hapus Permanen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };

@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -174,6 +175,7 @@ const parseAssistantMessage = (content: string): ParsedAssistantMessage | null =
 };
 
 const InterviewLite = () => {
+  const navigate = useNavigate();
   const [history, setHistory] = useState<AnalysisHistory[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedAnalysisId, setSelectedAnalysisId] = useState<string>("");
@@ -181,6 +183,7 @@ const InterviewLite = () => {
   const [mode, setMode] = useState<InterviewMode>("text");
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [qualityMode, setQualityMode] = useState<"lite" | "deep">("lite");
+  const [interviewEnabled, setInterviewEnabled] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [messages, setMessages] = useState<InterviewMessage[]>([]);
@@ -368,6 +371,7 @@ const InterviewLite = () => {
         const stats = await getUserStats();
         const adminMode = stats?.role === "admin";
         setIsAdmin(adminMode);
+        setInterviewEnabled(Boolean(stats?.interview_access?.enabled || adminMode));
         setSpeechEnabled(Boolean(stats?.interview_access?.speech_enabled || adminMode));
         setQualityMode((stats?.interview_access?.quality as "lite" | "deep") || (adminMode ? "deep" : "lite"));
         setSessionCost(adminMode ? 0 : mode === "speech" ? 3 : 2);
@@ -635,6 +639,14 @@ const InterviewLite = () => {
                 : `Session cost: ${sessionCost ?? (isAdmin ? 0 : mode === "speech" ? 3 : 2)} credits (${mode === "speech" ? "speech" : "text"} mode)`}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">Interview quality: {qualityMode === "deep" ? "Deep Coach" : "Lite Coach"}</p>
+            {!interviewEnabled && (
+              <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                Interview Lite khusus Basic/Pro plan. Upgrade dulu untuk mulai latihan interview.
+                <div className="mt-2">
+                  <Button size="sm" variant="outline" onClick={() => navigate("/dashboard/upgrade")}>Upgrade Plan</Button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -720,7 +732,7 @@ const InterviewLite = () => {
                   </div>
                 )}
 
-                <Button className="w-full" onClick={startInterview} disabled={isThinking || !selectedAnalysisId}>
+                <Button className="w-full" onClick={startInterview} disabled={!interviewEnabled || isThinking || !selectedAnalysisId}>
                   {sessionId && messages.length > 0 ? "Resume Session" : "Start Interview"}
                 </Button>
                 {restoredFromCache && (

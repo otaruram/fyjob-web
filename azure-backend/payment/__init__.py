@@ -286,7 +286,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         "Study Room basic path",
                         "Killer Quiz generation",
                         "CV manager core tools",
-                        "5 credits/hari",
+                        "+1 credit/hari (maks 5)",
                     ],
                 },
                 {
@@ -300,7 +300,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         "Limit harian lebih tinggi",
                         "Interview Lite (text mode)",
                         "Prioritas generasi lebih cepat",
-                        "10 credits/hari",
+                        "+2 credits/hari (maks 10)",
                     ],
                 },
                 {
@@ -315,7 +315,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         "Interview Lite speech mode",
                         "Deep AI coaching quality",
                         "Prioritas antrian tertinggi",
-                        "20 credits/hari",
+                        "+3 credits/hari (maks 20)",
                     ],
                 },
             ],
