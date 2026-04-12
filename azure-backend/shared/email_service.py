@@ -97,11 +97,11 @@ def send_trial_welcome_email(to: str, name: str) -> bool:
     from datetime import datetime, timedelta
     trial_end = (datetime.utcnow() + timedelta(days=7)).strftime("%d %B %Y")
     display_name = name.split("@")[0] if "@" in name else name
-    subject = "Selamat Datang di FYJob — Trial Pro 7 Hari Kamu Sudah Aktif! 🎉"
+    subject = "Selamat Datang di FYJob — Free Trial All Fitur 7 Hari Aktif! 🎉"
     html = f"""
     <div style="font-family:sans-serif;max-width:520px;margin:auto;color:#1e293b">
       <h2 style="color:#6366f1;margin-bottom:4px">Halo, {display_name}! 👋</h2>
-      <p style="margin-top:0">Akun FYJob kamu sudah aktif dengan <strong>Trial Pro Plan selama 7 hari</strong> — gratis!</p>
+      <p style="margin-top:0">Akun FYJob kamu sudah aktif dengan <strong>Free Trial All Fitur selama 7 hari</strong> — gratis!</p>
       <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin:16px 0">
         <p style="margin:0 0 8px 0"><strong>Yang kamu dapat selama trial:</strong></p>
         <ul style="margin:0;padding-left:20px;line-height:1.8">
@@ -112,7 +112,7 @@ def send_trial_welcome_email(to: str, name: str) -> bool:
           <li>✅ 20 kredit per hari</li>
         </ul>
       </div>
-      <p>Trial berlaku hingga <strong>{trial_end}</strong>. Setelah itu akun otomatis beralih ke Free Plan.</p>
+      <p>Trial berlaku hingga <strong>{trial_end}</strong>. Setelah itu akun otomatis kembali ke Free Plan jika belum perpanjang paket.</p>
       <p style="margin-top:20px">
         <a href="https://fyjob.my.id/dashboard"
            style="background:#6366f1;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
