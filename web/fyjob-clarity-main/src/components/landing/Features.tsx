@@ -32,17 +32,17 @@ export const Features = ({ t }: { t: any }) => {
   ];
 
   return (
-    <section className="py-24 bg-background">
-      <div className="container mx-auto px-6 max-w-6xl">
+    <section className="py-14 sm:py-18 lg:py-24 bg-background">
+      <div className="container mx-auto px-4 sm:px-6 max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.45, ease: "easeOut" }}
-          className="text-center mb-16"
+          className="text-center mb-10 sm:mb-16"
         >
-          <h2 className="text-3xl font-bold tracking-tight text-foreground mb-4">{t('feat_title')}</h2>
-          <p className="text-muted-foreground">{t('feat_desc')}</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground mb-3 sm:mb-4">{t('feat_title')}</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">{t('feat_desc')}</p>
         </motion.div>
 
         <motion.div
@@ -50,18 +50,18 @@ export const Features = ({ t }: { t: any }) => {
           initial="hidden"
           whileInView="show"
           viewport={{ once: true, amount: 0.15 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
         >
            {features.map((feat, idx) => (
              <motion.div
                key={idx}
                variants={item}
-               className="glass border-border p-6 rounded-2xl hover:bg-card/40 transition-all hover:scale-[1.02]"
+               className="glass border-border p-5 sm:p-6 rounded-2xl hover:bg-card/40 transition-all hover:scale-[1.02]"
              >
-                <div className="h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-5">
+                <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4 sm:mb-5">
                    <feat.icon className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-bold text-foreground mb-2">{feat.title}</h3>
+                <h3 className="text-base sm:text-lg font-bold text-foreground mb-2">{feat.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{feat.desc}</p>
              </motion.div>
            ))}

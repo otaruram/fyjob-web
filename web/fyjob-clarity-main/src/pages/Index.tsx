@@ -16,20 +16,20 @@ const Index = () => {
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
       {/* Nav */}
       <nav className="fixed top-0 inset-x-0 z-50 glass-strong">
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="container mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <Link to="/" aria-label="FYJOB home">
             <FyjobLogo />
           </Link>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {isLoggedIn ? (
                 <>
-                  <Link to="/dashboard" className="text-sm text-muted-foreground hover:text-foreground transition-colors font-medium">
+                  <Link to="/dashboard" className="hidden sm:inline-flex text-sm text-muted-foreground hover:text-foreground transition-colors font-medium">
                     Dashboard
                   </Link>
                   <Link
                     to="/dashboard"
-                    className="text-sm font-bold bg-primary text-primary-foreground px-5 py-2.5 rounded-lg hover:shadow-glow transition-all"
+                    className="text-xs sm:text-sm font-bold bg-primary text-primary-foreground px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-lg hover:shadow-glow transition-all whitespace-nowrap"
                   >
                     Go to Dashboard
                   </Link>
@@ -38,7 +38,7 @@ const Index = () => {
                 <>
                   <Link
                     to="/auth"
-                    className="text-sm font-bold bg-primary text-primary-foreground px-5 py-2.5 rounded-lg hover:shadow-glow transition-all"
+                    className="text-xs sm:text-sm font-bold bg-primary text-primary-foreground px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-lg hover:shadow-glow transition-all whitespace-nowrap"
                   >
                     {t('nav_getstarted')}
                   </Link>
@@ -50,7 +50,7 @@ const Index = () => {
       </nav>
 
       {/* Main Blocks */}
-      <main className="pt-24 pb-12">
+      <main className="pt-20 sm:pt-24 pb-10 sm:pb-12">
          <HeroSection t={t} />
          <Features t={t} />
          <Ecosystem t={t} />
@@ -58,8 +58,8 @@ const Index = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border py-12 bg-background/50">
-        <div className="container mx-auto px-6 text-center text-sm text-muted-foreground">
+      <footer className="border-t border-border py-10 sm:py-12 bg-background/50">
+        <div className="container mx-auto px-4 sm:px-6 text-center text-xs sm:text-sm text-muted-foreground">
           © 2026 FYJOB. The unfair advantage for hyper-competitive engineering roles.
         </div>
       </footer>
