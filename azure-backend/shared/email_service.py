@@ -139,3 +139,39 @@ def send_new_quiz_alert(to: str, job_title: str) -> bool:
             <p><a href="https://fyjob.my.id/dashboard/quiz" style="color:#2563eb">Open Killer Quiz →</a></p>
         </div>"""
         return send_email(to, subject, html)
+
+
+def send_plan_expiry_reminder(to: str, plan: str, days_left: int, expires_label: str = "") -> bool:
+    display_plan = (plan or "pro").strip().upper()
+    subject = f"FYJob Reminder — Paket {display_plan} berakhir {days_left} hari lagi"
+    if days_left <= 0:
+        subject = f"FYJob Reminder — Paket {display_plan} berakhir hari ini"
+
+    urgency_text = (
+        "Paket premium kamu akan berakhir hari ini."
+        if days_left <= 0
+        else f"Paket premium kamu akan berakhir dalam {days_left} hari."
+    )
+    expiry_line = f"<p><strong>Masa aktif sampai:</strong> {expires_label}</p>" if expires_label else ""
+
+    html = f"""
+    <div style="font-family:sans-serif;max-width:520px;margin:auto;color:#1e293b">
+      <h2 style="color:#0f766e;margin-bottom:4px">Reminder Paket {display_plan}</h2>
+      <p>{urgency_text}</p>
+      {expiry_line}
+      <p>Supaya fitur premium tetap aktif (Interview Lite, quality lebih tinggi, dan kredit harian lebih besar), upgrade/perpanjang paket sekarang.</p>
+      <p style="margin-top:18px">
+        <a href="https://fyjob.my.id/dashboard/upgrade"
+           style="background:#0f766e;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">
+          Upgrade Sekarang
+        </a>
+      </p>
+      <p style="font-size:12px;color:#94a3b8;margin-top:24px">
+        Email pengingat otomatis FYJob.
+      </p>
+    </div>"""
+    plain = (
+        f"FYJob reminder: Paket {display_plan} berakhir "
+        f"{'hari ini' if days_left <= 0 else f'dalam {days_left} hari'}"
+    )
+    return send_email(to, subject, html, plain)

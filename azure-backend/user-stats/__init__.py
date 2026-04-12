@@ -18,6 +18,7 @@ from shared.cosmos_client import (
 )
 from shared.plan_access import get_plan_runtime
 from shared.email_service import send_security_alert
+from shared.email_service import send_plan_expiry_reminder
 
 
 def _normalize_email(email: str) -> str:
@@ -355,6 +356,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         learning_path_runtime = get_plan_runtime(user, "learning_path")
 
         plan_expiry_notice = None
+        expiry_reminder_key = None
         if plan in ("basic", "pro") and plan_expires_at:
             try:
                 exp_dt = datetime.fromisoformat(plan_expires_at)
@@ -371,8 +373,33 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                             f"Paket {plan.upper()} akan habis dalam {days_left} hari "
                             f"({local_exp.strftime('%d-%m-%Y %H:%M:%S')} WIB)."
                         )
+                        if days_left in (7, 2):
+                            expiry_reminder_key = f"{plan}:{exp_dt.isoformat()}:{days_left}"
             except Exception:
                 plan_expiry_notice = None
+
+        # Email reminder milestones for expiring paid plans (H-7 and H-2)
+        if expiry_reminder_key and email:
+            try:
+                sent_keys = user.get("plan_expiry_email_sent_keys") or []
+                if not isinstance(sent_keys, list):
+                    sent_keys = []
+
+                if expiry_reminder_key not in sent_keys:
+                    days_left_value = int(expiry_reminder_key.rsplit(":", 1)[-1])
+                    sent = send_plan_expiry_reminder(
+                        to=email,
+                        plan=plan,
+                        days_left=days_left_value,
+                        expires_label=plan_expires_at,
+                    )
+                    if sent:
+                        sent_keys.append(expiry_reminder_key)
+                        users_container = get_container("Users")
+                        user["plan_expiry_email_sent_keys"] = sent_keys[-12:]
+                        users_container.upsert_item(user)
+            except Exception as e:
+                logging.warning(f"Failed to send plan expiry reminder email: {e}")
 
         welcome_notice = None
         should_persist_welcome_seen = False

@@ -4,7 +4,7 @@ import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
-import { getAnalysisHistory } from "@/lib/api";
+import { getAnalysisHistory, getUserStats } from "@/lib/api";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 
 const DashboardSidebar = () => {
@@ -15,6 +15,7 @@ const DashboardSidebar = () => {
   const collapsed = state === "collapsed";
   const isAllowedAdminEmail = (user?.email || "").trim().toLowerCase().replace(/\s+/g, "") === "okitr52@gmail.com";
   const [hasAnalysis, setHasAnalysis] = useState(false);
+  const [planBadge, setPlanBadge] = useState<string>("FREE");
   const isAdmin = isAllowedAdminEmail;
 
   useEffect(() => {
@@ -28,6 +29,20 @@ const DashboardSidebar = () => {
     };
 
     checkAnalysis();
+  }, []);
+
+  useEffect(() => {
+    const loadPlanBadge = async () => {
+      try {
+        const stats = await getUserStats();
+        const normalized = String(stats?.plan || "free").toUpperCase();
+        setPlanBadge(normalized === "ADMIN" ? "ADMIN" : normalized);
+      } catch {
+        setPlanBadge("FREE");
+      }
+    };
+
+    loadPlanBadge();
   }, []);
 
   const navGroups = [
@@ -74,7 +89,7 @@ const DashboardSidebar = () => {
             </svg>
             <span>FY<span className="text-primary">JOB</span></span>
             <span className="ml-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-              Pro
+              {planBadge}
             </span>
           </span>
         ) : (
