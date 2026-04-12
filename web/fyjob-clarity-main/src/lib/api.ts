@@ -258,6 +258,9 @@ export interface AdminUserRow {
   id: string;
   email: string;
   role: 'admin' | 'user';
+  plan?: 'free' | 'basic' | 'pro' | 'admin';
+  testing_plan_override?: 'free' | 'basic' | 'pro' | 'admin' | null;
+  plan_expires_at?: string | null;
   credits_remaining: number;
   is_banned?: boolean;
   banned_reason?: string;
@@ -269,8 +272,17 @@ export interface AdminOverview {
   total_users: number;
   banned_users: number;
   active_last_7_days: number;
+  testing_plan_override?: 'free' | 'basic' | 'pro' | 'admin' | null;
+  effective_plan?: 'free' | 'basic' | 'pro' | 'admin';
   most_used_feature?: { feature: string; count: number } | null;
   least_used_feature?: { feature: string; count: number } | null;
+}
+
+export interface AdminTestingPlanResult {
+  target_user_id: string;
+  testing_plan_override?: 'free' | 'basic' | 'pro' | 'admin' | null;
+  effective_plan: 'free' | 'basic' | 'pro' | 'admin';
+  credits_remaining: number;
 }
 
 export interface AdminActivitySummary {
@@ -457,6 +469,14 @@ export const adminAddUserCredits = (targetUserId: string, amount: number) =>
       amount,
     }
   );
+
+/** POST /api/admincenter action=set-testing-plan */
+export const adminSetTestingPlan = (testingPlan: 'free' | 'basic' | 'pro' | 'admin' | 'off', targetUserId?: string) =>
+  fetchApi<AdminTestingPlanResult>('/api/admincenter', 'POST', {
+    action: 'set-testing-plan',
+    targetUserId,
+    testingPlan,
+  });
 
 // ═══════════════════════════════════════════════════
 // Payment

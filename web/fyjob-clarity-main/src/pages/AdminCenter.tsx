@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import {
   adminAddUserCredits,
+  adminSetTestingPlan,
   adminSetUserBan,
   getAdminActivity,
   getAdminOverview,
@@ -24,6 +25,7 @@ const AdminCenter = () => {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [search, setSearch] = useState("");
   const [creditInput, setCreditInput] = useState<Record<string, number>>({});
+  const [testingPlan, setTestingPlan] = useState<"free" | "basic" | "pro" | "admin" | "off">("off");
 
   const loadAll = async (searchValue = "") => {
     setLoading(true);
@@ -44,6 +46,7 @@ const AdminCenter = () => {
       setOverview(ov);
       setActivity(act);
       setUsers(us.users || []);
+      setTestingPlan((ov.testing_plan_override as "free" | "basic" | "pro" | "admin" | null) || "off");
     } catch (e: any) {
       if ((e?.message || "").toLowerCase().includes("admin")) {
         setIsAdmin(false);
@@ -92,6 +95,16 @@ const AdminCenter = () => {
       await loadAll(search.trim());
     } catch (e: any) {
       toast.error(e?.message || "Failed adding credits");
+    }
+  };
+
+  const handleTestingPlanSave = async () => {
+    try {
+      await adminSetTestingPlan(testingPlan);
+      toast.success(testingPlan === "off" ? "Testing plan dimatikan" : `Admin testing plan diubah ke ${testingPlan}`);
+      await loadAll(search.trim());
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update testing plan");
     }
   };
 
@@ -145,6 +158,32 @@ const AdminCenter = () => {
           </div>
         </div>
 
+        <section className="terminal-shell p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Admin Plan Testing</h2>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Override effective plan admin untuk ngetes gating fitur Free, Basic, Pro, atau balik ke Admin.</p>
+              <p className="text-xs text-muted-foreground mt-2">Current effective plan: <span className="font-semibold text-foreground">{overview?.effective_plan || "admin"}</span></p>
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <select
+                value={testingPlan}
+                onChange={(e) => setTestingPlan(e.target.value as "free" | "basic" | "pro" | "admin" | "off")}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm min-w-40"
+              >
+                <option value="off">No Override</option>
+                <option value="free">Free</option>
+                <option value="basic">Basic</option>
+                <option value="pro">Pro</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button onClick={handleTestingPlanSave} className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-card/60">
+                Apply
+              </button>
+            </div>
+          </div>
+        </section>
+
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <section className="xl:col-span-2 terminal-shell p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between mb-4">
@@ -169,6 +208,7 @@ const AdminCenter = () => {
                   <tr className="text-left text-muted-foreground border-b border-border">
                     <th className="py-2 pr-2">Email</th>
                     <th className="py-2 pr-2">Role</th>
+                    <th className="py-2 pr-2">Plan</th>
                     <th className="py-2 pr-2">Credits</th>
                     <th className="py-2 pr-2">Status</th>
                     <th className="py-2 pr-2">Token</th>
@@ -183,6 +223,7 @@ const AdminCenter = () => {
                         <div className="text-xs text-muted-foreground break-all">{u.id}</div>
                       </td>
                       <td className="py-2 pr-2">{u.role}</td>
+                      <td className="py-2 pr-2">{u.testing_plan_override ? `${u.plan || "free"} -> ${u.testing_plan_override}` : (u.plan || "free")}</td>
                       <td className="py-2 pr-2">{u.role === "admin" ? "∞" : (u.credits_remaining ?? 0)}</td>
                       <td className="py-2 pr-2">{u.is_banned ? <span className="text-red-400">Banned</span> : <span className="text-emerald-400">Active</span>}</td>
                       <td className="py-2 pr-2">

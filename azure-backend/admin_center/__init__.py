@@ -13,7 +13,7 @@ from typing import Dict, Any, List
 import azure.functions as func
 
 from shared.auth import authenticate, error_response, success_response
-from shared.cosmos_client import get_container, log_admin_audit
+from shared.cosmos_client import get_container, log_admin_audit, get_effective_plan, get_plan_credit_cap
 
 ALLOWED_ADMIN_EMAIL = "okitr52@gmail.com"
 
@@ -62,6 +62,39 @@ def _count_users() -> Dict[str, int]:
     return {
         "total_users": int(total[0]) if total else 0,
         "banned_users": int(banned[0]) if banned else 0,
+    }
+
+
+def _set_testing_plan(admin_user_id: str, target_user_id: str, testing_plan: str):
+    users = get_container("Users")
+    target = users.read_item(item=target_user_id, partition_key=target_user_id)
+    normalized = (testing_plan or "").strip().lower()
+    if normalized not in {"free", "basic", "pro", "admin", "off", ""}:
+        raise ValueError("testingPlan must be one of: free, basic, pro, admin, off")
+
+    target["testing_plan_override"] = None if normalized in {"off", ""} else normalized
+    effective_plan = get_effective_plan(target)
+    if effective_plan == "admin":
+        target["credits_remaining"] = 999999
+    else:
+        target["credits_remaining"] = min(int(target.get("credits_remaining", 0)), get_plan_credit_cap(effective_plan))
+    users.upsert_item(target)
+
+    log_admin_audit(
+        action="set-testing-plan",
+        admin_user_id=admin_user_id,
+        payload={
+            "target_user_id": target_user_id,
+            "testing_plan_override": target.get("testing_plan_override"),
+            "effective_plan": effective_plan,
+        },
+    )
+
+    return {
+        "target_user_id": target_user_id,
+        "testing_plan_override": target.get("testing_plan_override"),
+        "effective_plan": effective_plan,
+        "credits_remaining": target.get("credits_remaining"),
     }
 
 
@@ -117,7 +150,7 @@ def _get_users(search: str = "", limit: int = 30) -> List[Dict[str, Any]]:
     safe_limit = max(1, min(100, int(limit or 30)))
 
     query = (
-        f"SELECT TOP {safe_limit} c.id, c.email, c.role, c.credits_remaining, "
+        f"SELECT TOP {safe_limit} c.id, c.email, c.role, c.plan, c.testing_plan_override, c.plan_expires_at, c.credits_remaining, "
         "c.is_banned, c.banned_reason, c.created_at, c.last_activity_at "
         "FROM c "
     )
@@ -214,6 +247,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     "active_last_7_days": _active_last_7_days(),
                     "most_used_feature": feature.get("most_used"),
                     "least_used_feature": feature.get("least_used"),
+                    "testing_plan_override": _admin_user.get("testing_plan_override"),
+                    "effective_plan": get_effective_plan(_admin_user),
                 })
 
             if action == "users":
@@ -255,6 +290,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     return error_response("amount must be > 0", 400)
 
                 return success_response(_add_credits(user_id, target_user_id, amount))
+
+            if action == "set-testing-plan":
+                target_user_id = str(body.get("targetUserId") or user_id).strip()
+                testing_plan = str(body.get("testingPlan") or "off").strip().lower()
+                return success_response(_set_testing_plan(user_id, target_user_id, testing_plan))
 
             return error_response("Unknown action", 400)
 

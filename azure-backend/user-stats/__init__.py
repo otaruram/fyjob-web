@@ -57,12 +57,21 @@ def _admin_overview():
         enable_cross_partition_query=True,
     ))
 
+    admin_override_rows = list(users.query_items(
+        "SELECT TOP 1 c.testing_plan_override, c.email, c.role FROM c WHERE LOWER(c.email) = @email",
+        parameters=[{"name": "@email", "value": "okitr52@gmail.com"}],
+        enable_cross_partition_query=True,
+    ))
+    admin_doc = admin_override_rows[0] if admin_override_rows else {}
+
     return {
         "total_users": int(total[0]) if total else 0,
         "banned_users": int(banned[0]) if banned else 0,
         "active_last_7_days": int(active_rows[0]) if active_rows else 0,
         "most_used_feature": usage_sorted[0] if usage_sorted else None,
         "least_used_feature": usage_sorted[-1] if usage_sorted else None,
+        "testing_plan_override": admin_doc.get("testing_plan_override"),
+        "effective_plan": get_effective_plan(admin_doc or {"role": "admin", "email": "okitr52@gmail.com"}),
     }
 
 
@@ -71,7 +80,7 @@ def _admin_users(search: str = "", limit: int = 40):
     safe_limit = max(1, min(100, int(limit or 40)))
 
     query = (
-        f"SELECT TOP {safe_limit} c.id, c.email, c.role, c.credits_remaining, c.is_banned, "
+        f"SELECT TOP {safe_limit} c.id, c.email, c.role, c.plan, c.testing_plan_override, c.plan_expires_at, c.credits_remaining, c.is_banned, "
         "c.banned_reason, c.created_at, c.last_activity_at FROM c "
     )
     params = []

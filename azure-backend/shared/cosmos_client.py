@@ -214,7 +214,11 @@ def get_effective_plan(user: Dict[str, Any]) -> str:
     """Resolve effective plan with admin override and expiry fallback."""
     email = _normalize_email(user.get("email", ""))
     role = str(user.get("role", "")).strip().lower()
-    if role == "admin" or is_allowed_admin_email(email):
+    is_admin = role == "admin" or is_allowed_admin_email(email)
+    testing_override = str(user.get("testing_plan_override") or "").strip().lower()
+    if is_admin and testing_override in {"free", "basic", "pro", "admin"}:
+        return testing_override
+    if is_admin:
         return "admin"
 
     plan = str(user.get("plan") or "free").strip().lower()

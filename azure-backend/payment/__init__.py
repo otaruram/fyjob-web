@@ -10,9 +10,8 @@ import json
 import hmac
 import hashlib
 import os
-import urllib.request
-import urllib.error
 from datetime import datetime, timezone, timedelta
+import requests
 from shared.auth import authenticate, error_response, success_response, CORS_HEADERS
 from shared.cosmos_client import (
     get_container,
@@ -29,6 +28,8 @@ PLAN_PRICES = {
     "basic": {"amount": 29000, "currency": "IDR", "label": "Basic Plan – Rp29.000/bulan"},
     "pro":   {"amount": 79000, "currency": "IDR", "label": "Pro Plan – Rp79.000/bulan"},
 }
+
+SUPPORTED_PAYMENT_TYPES = {"qris", "gopay", "shopeepay", "bni_va", "bri_va", "permata_va", "cimb_niaga_va"}
 
 PLAN_DURATION_DAYS = {
     "basic": 30,
@@ -68,7 +69,7 @@ def _get_user_plan(user_doc: dict) -> str:
     return plan if plan in ("free", "basic", "pro") else "free"
 
 
-def _create_louvin_transaction(amount: int, currency: str, label: str, user_id: str, plan: str, email: str, success_url: str, cancel_url: str) -> dict:
+def _create_louvin_transaction(amount: int, currency: str, label: str, user_id: str, plan: str, email: str, success_url: str, cancel_url: str, payment_type: str) -> dict:
     """Call Louvin.dev POST /create-transaction."""
     api_key = _get_louvin_key()
     if not api_key:
@@ -77,6 +78,7 @@ def _create_louvin_transaction(amount: int, currency: str, label: str, user_id: 
     payload = {
         "amount": amount,
         "currency": currency,
+        "payment_type": payment_type,
         "description": label,
         "slug": LOUVIN_SLUG,
         "metadata": {
@@ -87,25 +89,48 @@ def _create_louvin_transaction(amount: int, currency: str, label: str, user_id: 
         "redirect_url": success_url,
         "cancel_url": cancel_url,
     }
-    body = json.dumps(payload).encode("utf-8")
-
-    req = urllib.request.Request(
-        f"{LOUVIN_BASE_URL}/create-transaction",
-        data=body,
-        headers={
+    candidate_headers = [
+        {
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "x-api-key": api_key,
+            "api-key": api_key,
+            "User-Agent": "Mozilla/5.0 FYJOB Payment Client",
+            "Origin": "https://fyjob.my.id",
+            "Referer": "https://fyjob.my.id/",
+        },
+        {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
             "Authorization": f"Bearer {api_key}",
             "x-api-key": api_key,
+            "User-Agent": "FYJOB/1.0 (+https://fyjob.my.id)",
+            "Origin": "https://fyjob.my.id",
+            "Referer": "https://fyjob.my.id/",
         },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        body_err = e.read().decode("utf-8", errors="replace") if e else ""
-        logging.error(f"Louvin API error {e.code}: {body_err}")
-        raise RuntimeError(f"Payment gateway error ({e.code}): {body_err}")
+    ]
+
+    last_status = None
+    last_text = ""
+    for headers in candidate_headers:
+        try:
+            response = requests.post(
+                f"{LOUVIN_BASE_URL}/create-transaction",
+                headers=headers,
+                json=payload,
+                timeout=20,
+            )
+            if response.status_code < 400:
+                return response.json()
+            last_status = response.status_code
+            last_text = response.text[:500]
+            logging.warning(f"Louvin API variant failed {response.status_code}: {last_text}")
+        except Exception as exc:
+            last_text = str(exc)
+            logging.warning(f"Louvin API request variant exception: {exc}")
+
+    logging.error(f"Louvin API error {last_status}: {last_text}")
+    raise RuntimeError(f"Payment gateway error ({last_status or 0}): {last_text}")
 
 
 def _handle_webhook(req: func.HttpRequest) -> func.HttpResponse:
@@ -204,6 +229,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "current_plan": current_plan,
             "plan_expires_at": plan_expires_at,
             "is_admin": is_admin_user,
+            "testing_plan_override": user_doc.get("testing_plan_override"),
             "available_plans": [
                 {
                     "id": "free",
@@ -262,8 +288,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         if action == "create":
             plan = (body.get("plan") or "").strip().lower()
+            payment_type = (body.get("paymentType") or body.get("payment_type") or "qris").strip().lower()
             if plan not in PLAN_PRICES:
                 return error_response(f"Invalid plan. Choose: {list(PLAN_PRICES.keys())}", 400)
+            if payment_type not in SUPPORTED_PAYMENT_TYPES:
+                return error_response(f"Invalid paymentType. Choose: {sorted(SUPPORTED_PAYMENT_TYPES)}", 400)
 
             if is_admin_user:
                 return error_response("Admin sudah unlimited, tidak perlu upgrade.", 400)
@@ -285,6 +314,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     email=email,
                     success_url=success_url,
                     cancel_url=cancel_url,
+                    payment_type=payment_type,
                 )
             except RuntimeError as e:
                 return error_response(str(e), 502)
@@ -294,6 +324,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "transaction_id": result.get("id") or result.get("transaction_id"),
                 "plan": plan,
                 "amount": plan_info["amount"],
+                "payment_type": payment_type,
             })
 
         if action == "webhook":
