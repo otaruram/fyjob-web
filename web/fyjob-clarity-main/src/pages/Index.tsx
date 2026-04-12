@@ -5,6 +5,7 @@ import { FyjobLogo } from "@/components/FyjobLogo";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { Ecosystem } from "@/components/landing/Ecosystem";
 import { Features } from "@/components/landing/Features";
+import { Pricing } from "@/components/landing/Pricing";
 import { TechStack } from "@/components/landing/TechStack";
 
 const Index = () => {
@@ -53,6 +54,7 @@ const Index = () => {
       <main className="pt-20 sm:pt-24 pb-10 sm:pb-12">
          <HeroSection t={t} />
          <Features t={t} />
+        <Pricing />
          <Ecosystem t={t} />
          <TechStack t={t} />
       </main>
