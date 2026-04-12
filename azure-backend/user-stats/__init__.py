@@ -14,6 +14,7 @@ from shared.cosmos_client import (
     log_admin_audit,
     get_effective_plan,
     get_plan_credit_cap,
+    get_plan_daily_regen,
 )
 from shared.plan_access import get_plan_runtime
 from shared.email_service import send_security_alert
@@ -277,10 +278,31 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         is_admin = plan == "admin"
         plan_expires_at = user.get("plan_expires_at")
         max_credits = "∞" if is_admin else get_plan_credit_cap(plan)
+        daily_regen = 0 if is_admin else get_plan_daily_regen(plan)
         analyze_runtime = get_plan_runtime(user, "analyze")
         chat_runtime = get_plan_runtime(user, "chat")
         quiz_runtime = get_plan_runtime(user, "quiz")
         learning_path_runtime = get_plan_runtime(user, "learning_path")
+
+        plan_expiry_notice = None
+        if plan in ("basic", "pro") and plan_expires_at:
+            try:
+                exp_dt = datetime.fromisoformat(plan_expires_at)
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                now_dt = datetime.now(timezone.utc)
+                if exp_dt > now_dt:
+                    delta = exp_dt - now_dt
+                    total_hours = int(delta.total_seconds() // 3600)
+                    days_left = max(0, total_hours // 24)
+                    if delta <= timedelta(days=7):
+                        local_exp = exp_dt.astimezone(timezone(timedelta(hours=7)))
+                        plan_expiry_notice = (
+                            f"Paket {plan.upper()} akan habis dalam {days_left} hari "
+                            f"({local_exp.strftime('%d-%m-%Y %H:%M:%S')} WIB)."
+                        )
+            except Exception:
+                plan_expiry_notice = None
 
         # ── Security email on first login of the day (if user opted in) ──────
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -306,9 +328,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "role": user.get("role", "user"),
             "plan": plan,
             "plan_expires_at": plan_expires_at if plan in ("basic", "pro") else None,
+            "plan_expiry_notice": plan_expiry_notice,
             "interview_access": {
                 "quality": "deep" if (is_admin or plan == "pro") else "lite",
                 "speech_enabled": bool(is_admin or plan == "pro"),
+            },
+            "credit_regen": {
+                "daily_add": daily_regen,
+                "cap": max_credits,
             },
             "feature_access": {
                 "analyze": {

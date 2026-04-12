@@ -23,7 +23,7 @@ from shared.cosmos_client import (
     is_allowed_admin_email,
     get_effective_plan,
 )
-from shared.llm_service import call_llm, MODEL_GEMINI_FLASH, MODEL_GEMINI_3_PRO
+from shared.llm_service import call_llm, MODEL_GEMINI_FLASH, MODEL_GEMINI_PRO, MODEL_GEMINI_3_PRO
 
 try:
     import redis
@@ -83,10 +83,10 @@ INTERVIEW_PROFILE = {
     },
     "basic": {
         "quality": "lite",
-        "max_questions": 4,
-        "max_turns": 9,
-        "question_max_tokens": 280,
-        "summary_max_tokens": 320,
+        "max_questions": 5,
+        "max_turns": 12,
+        "question_max_tokens": 360,
+        "summary_max_tokens": 420,
         "speech_enabled": False,
         "text_cost": max(1, TEXT_SESSION_COST),
         "speech_cost": max(2, SPEECH_SESSION_COST),
@@ -94,14 +94,14 @@ INTERVIEW_PROFILE = {
     },
     "pro": {
         "quality": "deep",
-        "max_questions": 6,
-        "max_turns": 14,
-        "question_max_tokens": 560,
-        "summary_max_tokens": 520,
+        "max_questions": 8,
+        "max_turns": 18,
+        "question_max_tokens": 780,
+        "summary_max_tokens": 700,
         "speech_enabled": True,
         "text_cost": max(1, TEXT_SESSION_COST),
         "speech_cost": max(2, SPEECH_SESSION_COST),
-        "model": MODEL_GEMINI_FLASH,
+        "model": MODEL_GEMINI_PRO,
     },
     "admin": {
         "quality": "deep",

@@ -63,6 +63,12 @@ PLAN_CREDIT_CAPS = {
     "pro": 20,
     "admin": 999999,
 }
+PLAN_DAILY_REGEN = {
+    "free": 1,
+    "basic": 2,
+    "pro": 3,
+    "admin": 0,
+}
 CREDIT_REGEN_PER_DAY = 1
 
 
@@ -241,6 +247,11 @@ def get_plan_credit_cap(plan: str) -> int:
     return int(PLAN_CREDIT_CAPS.get((plan or "free").strip().lower(), MAX_CREDITS))
 
 
+def get_plan_daily_regen(plan: str) -> int:
+    normalized = (plan or "free").strip().lower()
+    return int(PLAN_DAILY_REGEN.get(normalized, CREDIT_REGEN_PER_DAY))
+
+
 # ─── User Operations ───
 def get_or_create_user(user_id: str, email: str = "", timezone: str = "") -> Dict[str, Any]:
     """Get user from Users container, create if not exists."""
@@ -309,6 +320,7 @@ def check_and_regen_credits(user_id: str, email: str = "") -> Dict[str, Any]:
     user = get_or_create_user(user_id, email)
     effective_plan = get_effective_plan(user)
     credit_cap = get_plan_credit_cap(effective_plan)
+    daily_regen = get_plan_daily_regen(effective_plan)
 
     if effective_plan == "admin":
         return user
@@ -332,8 +344,8 @@ def check_and_regen_credits(user_id: str, email: str = "") -> Dict[str, Any]:
 
     if days_passed > 0:
         current_credits = user.get("credits_remaining", 0)
-        # Add +1 per day that passed, capped by plan
-        new_credits = min(credit_cap, current_credits + (days_passed * CREDIT_REGEN_PER_DAY))
+        # Add credits by plan rate per day passed, capped by plan
+        new_credits = min(credit_cap, current_credits + (days_passed * daily_regen))
         user["credits_remaining"] = new_credits
         user["last_regen_date"] = local_now.isoformat()
         changed = True

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, Sparkles, Loader2, AlertCircle, Crown, Zap } from "lucide-react";
+import { Check, Sparkles, Loader2, AlertCircle, Crown, Zap, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { getPaymentStatus, createPaymentTransaction, PaymentStatus, PlanInfo } from "@/lib/api";
+import { getPaymentStatus, PaymentStatus, PlanInfo } from "@/lib/api";
 
 const PLAN_ICONS: Record<string, React.ReactNode> = {
   free: <Zap className="h-5 w-5 text-muted-foreground" />,
@@ -13,27 +13,14 @@ const PLAN_ICONS: Record<string, React.ReactNode> = {
   pro: <Crown className="h-5 w-5 text-yellow-400" />,
 };
 
-const PAYMENT_METHOD_OPTIONS = [
-  { value: "qris", label: "QRIS" },
-  { value: "gopay", label: "GoPay" },
-  { value: "shopeepay", label: "ShopeePay" },
-  { value: "bni_va", label: "BNI VA" },
-  { value: "bri_va", label: "BRI VA" },
-  { value: "permata_va", label: "Permata VA" },
-  { value: "cimb_niaga_va", label: "CIMB Niaga VA" },
-] as const;
-
-type PaymentMethodValue = (typeof PAYMENT_METHOD_OPTIONS)[number]["value"];
-
 export default function Upgrade() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
   const [status, setStatus] = useState<PaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>("qris");
 
   const paymentResult = searchParams.get("payment");
 
@@ -66,38 +53,9 @@ export default function Upgrade() {
     load();
   }, []);
 
-  const handleCheckout = async (planId: string) => {
+  const handleCheckout = (planId: string) => {
     if (planId === "free") return;
-    setCheckoutLoading(planId);
-    try {
-      const result = await createPaymentTransaction(
-        planId as "basic" | "pro",
-        `${window.location.origin}/dashboard/upgrade?payment=success`,
-        `${window.location.origin}/dashboard/upgrade?payment=cancel`,
-        paymentMethod
-      );
-      if (result.checkout_url) {
-        window.location.href = result.checkout_url;
-      } else if (result.actions?.length) {
-        const actionUrl = result.actions.find((a) => a.url)?.url;
-        if (actionUrl) {
-          window.location.href = actionUrl;
-          return;
-        }
-        throw new Error("Link pembayaran belum tersedia. Coba ganti metode pembayaran.");
-      } else if (result.payment_number || result.qr_string) {
-        throw new Error("Transaksi QR berhasil dibuat, tapi link checkout tidak tersedia. Coba metode pembayaran selain QRIS.");
-      } else {
-        throw new Error("Checkout URL tidak tersedia");
-      }
-    } catch (e: any) {
-      toast({
-        title: "Gagal membuat transaksi",
-        description: e.message || "Coba lagi nanti",
-        variant: "destructive",
-      });
-      setCheckoutLoading(null);
-    }
+    navigate(`/dashboard/checkout?plan=${planId}`);
   };
 
   if (loading) {
@@ -157,21 +115,9 @@ export default function Upgrade() {
           transition={{ duration: 0.35, delay: 0.09 }}
           className="rounded-xl border border-border bg-card/70 px-4 py-3"
         >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">Metode Pembayaran</p>
-              <p className="text-xs text-muted-foreground">Pilih metode yang paling nyaman sebelum klik upgrade.</p>
-            </div>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethodValue)}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm min-w-[220px]"
-            >
-              {PAYMENT_METHOD_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Langkah selanjutnya: pilih paket di bawah, lalu kamu akan diarahkan ke halaman checkout khusus untuk memilih metode pembayaran fleksibel.
+          </p>
         </motion.div>
       )}
 
@@ -212,7 +158,6 @@ export default function Upgrade() {
         {plans.map((plan, idx) => {
           const isCurrent = plan.id === currentPlan || (isAdmin && plan.id === "pro");
           const isHighlighted = plan.highlighted;
-          const isLoadingThis = checkoutLoading === plan.id;
 
           return (
             <motion.div
@@ -271,13 +216,9 @@ export default function Upgrade() {
                     size="sm"
                     variant={isHighlighted ? "default" : "outline"}
                     className="w-full"
-                    disabled={!!checkoutLoading}
                     onClick={() => handleCheckout(plan.id)}
                   >
-                    {isLoadingThis ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : null}
-                    {isLoadingThis ? "Membuka checkout..." : `Upgrade ke ${plan.name}`}
+                    <ArrowRight className="h-4 w-4 mr-2" /> Lanjut ke Checkout
                   </Button>
                 )}
               </div>
@@ -288,7 +229,7 @@ export default function Upgrade() {
 
       {/* Fine print */}
       <p className="text-xs text-muted-foreground text-center px-4">
-        Pembayaran melalui Louvin.dev ({PAYMENT_METHOD_OPTIONS.find((m) => m.value === paymentMethod)?.label || "QRIS"}) · IDR · Automatic plan activation setelah pembayaran sukses.
+        Pembayaran melalui Louvin.dev · metode fleksibel di halaman checkout · Automatic plan activation setelah pembayaran sukses.
         Langganan berlaku 30 hari.
       </p>
     </div>
