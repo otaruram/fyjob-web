@@ -121,7 +121,7 @@ def _normalize_plan(value: str) -> str:
     p = (value or "").strip().lower()
     if p in INTERVIEW_PROFILE:
         return p
-    return DEFAULT_PLAN if DEFAULT_PLAN in INTERVIEW_PROFILE else "basic"
+    return DEFAULT_PLAN if DEFAULT_PLAN in INTERVIEW_PROFILE else "free"
 
 
 def _is_admin_user(user_doc: dict, email: str = "") -> bool:

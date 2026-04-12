@@ -14,12 +14,16 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone, timedelta
 from shared.auth import authenticate, error_response, success_response, CORS_HEADERS
-from shared.cosmos_client import get_container, get_secret, ALLOWED_ADMIN_EMAIL
+from shared.cosmos_client import (
+    get_container,
+    get_secret,
+    ALLOWED_ADMIN_EMAIL,
+    get_plan_credit_cap,
+)
 
 # ─── Louvin.dev config ───
 LOUVIN_BASE_URL = "https://api.louvin.dev"
 LOUVIN_SLUG = "fyjob"
-LOUVIN_API_KEY_FALLBACK = "lv_85812f4d450e4580a324eb4f9e8b7994"
 
 PLAN_PRICES = {
     "basic": {"amount": 29000, "currency": "IDR", "label": "Basic Plan – Rp29.000/bulan"},
@@ -33,11 +37,7 @@ PLAN_DURATION_DAYS = {
 
 
 def _get_louvin_key() -> str:
-    return (
-        get_secret("LOUVIN_API_KEY")
-        or os.environ.get("LOUVIN_API_KEY", "")
-        or LOUVIN_API_KEY_FALLBACK
-    )
+    return get_secret("LOUVIN_API_KEY") or os.environ.get("LOUVIN_API_KEY", "")
 
 
 def _normalize_email(email: str) -> str:
@@ -146,10 +146,15 @@ def _handle_webhook(req: func.HttpRequest) -> func.HttpResponse:
         user_doc = users.read_item(item=user_id, partition_key=user_id)
         duration_days = PLAN_DURATION_DAYS.get(plan, 30)
         expires_at = (datetime.now(timezone.utc) + timedelta(days=duration_days)).isoformat()
+        plan_credit_cap = get_plan_credit_cap(plan)
+        current_credits = int(user_doc.get("credits_remaining", 0))
         user_doc["plan"] = plan
         user_doc["plan_expires_at"] = expires_at
         user_doc["plan_activated_at"] = datetime.now(timezone.utc).isoformat()
         user_doc["plan_transaction_id"] = str(body.get("id") or body.get("transaction_id") or "")
+        # On successful payment, sync credits to at least the plan cap immediately.
+        user_doc["credits_remaining"] = max(current_credits, plan_credit_cap)
+        user_doc["last_regen_date"] = datetime.now(timezone.utc).isoformat()
         users.upsert_item(user_doc)
         logging.info(f"Plan upgraded: user={user_id} plan={plan} expires={expires_at}")
     except Exception as e:

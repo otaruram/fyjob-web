@@ -218,6 +218,28 @@ powershell -ExecutionPolicy Bypass -File .\create-cosmos-containers.ps1
 - `AZURE_SPEECH_REGION`
 - `AZURE_SPEECH_STT_CONTENT_TYPE`
 - `AZURE_SPEECH_STT_MAX_AUDIO_BYTES`
+
+## Payment Plan Notes
+
+Tidak perlu database/container terpisah untuk plan Free/Basic/Pro.
+Plan disimpan langsung di dokumen user pada container `Users` dengan field berikut:
+
+- `plan`: `free | basic | pro`
+- `plan_expires_at`: ISO datetime (untuk basic/pro)
+- `plan_activated_at`: ISO datetime
+- `plan_transaction_id`: id transaksi payment gateway
+
+Alur otomatis saat user bayar:
+
+1. Frontend call `POST /api/payment` action `create`
+2. User diarahkan ke checkout Louvin
+3. Louvin kirim webhook ke `POST /api/payment?action=webhook`
+4. Backend update dokumen user (`plan`, `plan_expires_at`, dst) otomatis
+5. Endpoint fitur membaca plan efektif dari dokumen user tanpa input manual admin
+
+Required setting untuk payment:
+
+- `LOUVIN_API_KEY` (Function App settings / Key Vault)
 - `AZURE_SPEECH_TTS_OUTPUT_FORMAT`
 - `AZURE_SPEECH_TTS_VOICE_ID`
 - `AZURE_SPEECH_TTS_VOICE_EN`

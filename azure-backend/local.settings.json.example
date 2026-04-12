@@ -11,6 +11,7 @@
     "SUPABASE_ANON_KEY": "your-supabase-anon-key",
     "JWT_SECRET": "your-supabase-jwt-secret",
     "SUMOPOD_API_KEY": "your-sumopod-api-key",
+    "LOUVIN_API_KEY": "your-louvin-api-key",
     "AZURE_SPEECH_KEY": "your-azure-speech-key",
     "AZURE_SPEECH_REGION": "your-azure-speech-region",
     "REDIS_URL": "",
