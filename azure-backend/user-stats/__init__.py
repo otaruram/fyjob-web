@@ -15,6 +15,7 @@ from shared.cosmos_client import (
     get_effective_plan,
     get_plan_credit_cap,
 )
+from shared.plan_access import get_plan_runtime
 from shared.email_service import send_security_alert
 
 
@@ -215,7 +216,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 return success_response(_admin_add_credits(user_id, target_user_id, amount))
 
         # Get user with credit regen check
-        credits = user.get("credits_remaining", MAX_CREDITS)
+        credits = user.get("credits_remaining", get_plan_credit_cap(get_effective_plan(user)))
 
         # Get analysis history
         try:
@@ -267,6 +268,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         is_admin = plan == "admin"
         plan_expires_at = user.get("plan_expires_at")
         max_credits = "∞" if is_admin else get_plan_credit_cap(plan)
+        analyze_runtime = get_plan_runtime(user, "analyze")
+        chat_runtime = get_plan_runtime(user, "chat")
+        quiz_runtime = get_plan_runtime(user, "quiz")
+        learning_path_runtime = get_plan_runtime(user, "learning_path")
 
         # ── Security email on first login of the day (if user opted in) ──────
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -295,6 +300,30 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "interview_access": {
                 "quality": "deep" if (is_admin or plan == "pro") else "lite",
                 "speech_enabled": bool(is_admin or plan == "pro"),
+            },
+            "feature_access": {
+                "analyze": {
+                    "priority_lane": analyze_runtime["lane"],
+                    "model": analyze_runtime["model"],
+                    "cache_ttl_sec": analyze_runtime["cache_ttl_sec"],
+                },
+                "ask_ujang": {
+                    "priority_lane": chat_runtime["lane"],
+                    "model": chat_runtime["model"],
+                    "cache_ttl_sec": chat_runtime["cache_ttl_sec"],
+                    "rate_limit_max": chat_runtime["rate_limit_max"],
+                },
+                "killer_quiz": {
+                    "priority_lane": quiz_runtime["lane"],
+                    "model": quiz_runtime["model"],
+                    "cache_ttl_sec": quiz_runtime["cache_ttl_sec"],
+                },
+                "learning_path": {
+                    "priority_lane": learning_path_runtime["lane"],
+                    "path_count": learning_path_runtime["path_count"],
+                    "resources_per_path": learning_path_runtime["resources_per_path"],
+                    "cache_ttl_sec": learning_path_runtime["cache_ttl_sec"],
+                },
             },
             "next_regen_time": get_next_regen_time(user),
             "total_analyses": total_analyses,

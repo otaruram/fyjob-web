@@ -8,7 +8,9 @@ import json
 from datetime import datetime
 from shared.auth import authenticate, error_response, success_response
 from shared.cosmos_client import get_container, check_and_regen_credits
-from shared.llm_service import call_llm_json, MODEL_GEMINI_FLASH, MODEL_GEMINI_3_PRO
+from shared.llm_service import call_llm_json
+from shared.plan_access import get_plan_runtime, get_plan_rank, get_feature_lock_ttl
+from shared.redis_cache import get_json, set_json, hash_text, acquire_lock, release_lock
 from shared.prompts import KILLER_QUIZ_PROMPT
 from shared.email_service import send_new_quiz_alert
 
@@ -115,6 +117,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         user = check_and_regen_credits(user_id, email)
+        runtime = get_plan_runtime(user, "quiz")
+        plan = runtime["plan"]
         if not user.get("raw_cv_text"):
             return error_response("CV is not uploaded yet. Please upload your CV in CV Manager first.", 403)
 
@@ -134,54 +138,89 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if analysis.get("userId") != user_id:
             return error_response("Analysis not found", 404)
 
+        redis_cache_key = f"fyjob:quiz:cache:{hash_text(user_id, analysis_id, plan)}"
+        cached_quiz = get_json(redis_cache_key)
+        if isinstance(cached_quiz, dict) and _is_quiz_shape_valid(cached_quiz):
+            return success_response({
+                "quiz": cached_quiz,
+                "analysis_id": analysis_id,
+                "credits_remaining": user.get("credits_remaining", 0),
+                "cached": True,
+                "cache_source": "redis",
+                "plan": plan,
+                "priority_lane": runtime["lane"],
+            })
+
         # Return existing quiz when shape is valid (5 MCQ + 5 Essay).
         # Legacy quiz payloads are regenerated once to keep UX consistent.
-        if analysis.get("killer_quiz") and _is_quiz_shape_valid(analysis.get("killer_quiz")):
+        stored_plan = analysis.get("killer_quiz_plan")
+        if analysis.get("killer_quiz") and _is_quiz_shape_valid(analysis.get("killer_quiz")) and get_plan_rank(stored_plan or "free") >= get_plan_rank(plan):
+            set_json(redis_cache_key, analysis["killer_quiz"], int(runtime.get("cache_ttl_sec", 3600)))
             return success_response({
                 "quiz": analysis["killer_quiz"],
                 "analysis_id": analysis_id,
-                "credits_remaining": user.get("credits_remaining", 0)
+                "credits_remaining": user.get("credits_remaining", 0),
+                "cached": True,
+                "cache_source": "cosmos",
+                "plan": plan,
+                "priority_lane": runtime["lane"],
             })
 
-        # Build prompt context
-        context = (
-            f"Job Title: {analysis.get('jobTitle', 'Unknown')}\n"
-            f"Match Score: {analysis.get('matchScore', 'N/A')}%\n"
-            f"Skill Gaps: {', '.join(analysis.get('gaps', []))}\n"
-            f"Job Description: {analysis.get('jobDescription', '')[:1000]}"
-        )
+        request_hash = hash_text(user_id, analysis_id, plan, analysis.get("updated_at", ""), analysis.get("matchScore", ""))
+        lock_token = acquire_lock(f"fyjob:quiz:lock:{runtime['lane']}:{request_hash}", get_feature_lock_ttl("quiz"))
+        if not lock_token:
+            return error_response("Quiz generation is already processing. Please retry shortly.", 409)
 
-        messages = [
-            {"role": "system", "content": KILLER_QUIZ_PROMPT},
-            {"role": "user", "content": f"Generate a killer quiz based on this job analysis:\n\n{context}"}
-        ]
-
-        model_to_use = MODEL_GEMINI_3_PRO if user.get("role") == "admin" else MODEL_GEMINI_FLASH
-        raw_quiz_data = call_llm_json(messages, model=model_to_use, max_tokens=4000, temperature=0.7)
-        quiz_data = _normalize_quiz_payload(raw_quiz_data, analysis.get("jobTitle", "this role"))
-
-        if not _is_quiz_shape_valid(quiz_data):
-            logging.error("Quiz normalization failed to create a valid 5+5 payload")
-            return error_response("Quiz generation failed. Please retry.", 500)
-
-        # Store quiz in analysis record
-        analysis["killer_quiz"] = quiz_data
-        analysis["quiz_generated_at"] = datetime.utcnow().isoformat()
-        history_container.upsert_item(analysis)
-
-        # Optional email alert when user enabled new-quiz notifications.
         try:
-            prefs = user.get("alert_prefs", {}) or {}
-            if prefs.get("email_new_quiz", False) and email:
-                send_new_quiz_alert(email, analysis.get("jobTitle", "Target Role"))
-        except Exception as e:
-            logging.warning(f"Failed sending new quiz email alert: {e}")
+            # Build prompt context
+            context = (
+                f"Job Title: {analysis.get('jobTitle', 'Unknown')}\n"
+                f"Match Score: {analysis.get('matchScore', 'N/A')}%\n"
+                f"Skill Gaps: {', '.join(analysis.get('gaps', []))}\n"
+                f"Job Description: {analysis.get('jobDescription', '')[:int(runtime.get('context_limit', 1000))]}"
+            )
 
-        return success_response({
-            "quiz": quiz_data,
-            "analysis_id": analysis_id,
-            "credits_remaining": user.get("credits_remaining", 0)
-        })
+            messages = [
+                {"role": "system", "content": KILLER_QUIZ_PROMPT},
+                {"role": "user", "content": f"Generate a killer quiz based on this job analysis:\n\n{context}"}
+            ]
+
+            model_to_use = runtime["model"]
+            raw_quiz_data = call_llm_json(messages, model=model_to_use, max_tokens=int(runtime.get("max_tokens", 4000)), temperature=0.7)
+            quiz_data = _normalize_quiz_payload(raw_quiz_data, analysis.get("jobTitle", "this role"))
+
+            if not _is_quiz_shape_valid(quiz_data):
+                logging.error("Quiz normalization failed to create a valid 5+5 payload")
+                return error_response("Quiz generation failed. Please retry.", 500)
+
+            # Store quiz in analysis record
+            analysis["killer_quiz"] = quiz_data
+            analysis["quiz_generated_at"] = datetime.utcnow().isoformat()
+            analysis["killer_quiz_plan"] = plan
+            analysis["killer_quiz_model"] = model_to_use
+            analysis["killer_quiz_priority_lane"] = runtime["lane"]
+            history_container.upsert_item(analysis)
+            set_json(redis_cache_key, quiz_data, int(runtime.get("cache_ttl_sec", 3600)))
+
+            # Optional email alert when user enabled new-quiz notifications.
+            try:
+                prefs = user.get("alert_prefs", {}) or {}
+                if prefs.get("email_new_quiz", False) and email:
+                    send_new_quiz_alert(email, analysis.get("jobTitle", "Target Role"))
+            except Exception as e:
+                logging.warning(f"Failed sending new quiz email alert: {e}")
+
+            return success_response({
+                "quiz": quiz_data,
+                "analysis_id": analysis_id,
+                "credits_remaining": user.get("credits_remaining", 0),
+                "cached": False,
+                "plan": plan,
+                "priority_lane": runtime["lane"],
+                "model_used": model_to_use,
+            })
+        finally:
+            release_lock(f"fyjob:quiz:lock:{runtime['lane']}:{request_hash}", lock_token)
 
     except Exception as e:
         logging.error(f"Generate quiz error: {e}")

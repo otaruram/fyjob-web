@@ -192,8 +192,13 @@ def _build_system_prompt(language: str, mode: str, context: str, max_questions: 
     return (
         "You are FYJOB Interview Lite. Ask technical interview questions only (no behavioral questions). "
         f"The total interview has exactly {max_questions} technical questions. "
-        "For each turn, always return this exact format:\n"
+        "At interview start, return this exact format:\n"
         "**Pertanyaan Interview:** [question text]\n"
+        "**Petunjuk Jawaban Kuat:** [hint for a strong answer]\n\n"
+        "After the candidate answers, first evaluate their answer briefly, then ask the next question with this exact format:\n"
+        "**Evaluasi Jawaban:** [brief evaluation of strengths and misses]\n"
+        "**Tindak Lanjut:** [one short practical improvement tip]\n"
+        "**Pertanyaan Interview:** [next technical question]\n"
         "**Petunjuk Jawaban Kuat:** [hint for a strong answer]\n\n"
         "Each question must be specific to the user's CV + selected analysis context and feel like real engineering interview drills.\n"
         f"{depth_instruction}\n"
@@ -678,7 +683,8 @@ def _turn_session(user_id: str, email: str, body: dict):
                 "role": "user",
                 "content": (
                     f"My previous answer: {answer_text}\n"
-                    f"Now ask technical question {next_question}/{session_max_questions}. "
+                    "First evaluate my answer briefly and concretely. "
+                    f"Then ask technical question {next_question}/{session_max_questions}. "
                     "Use the required output format exactly."
                 ),
             }
@@ -692,6 +698,8 @@ def _turn_session(user_id: str, email: str, body: dict):
         )
         if not assistant_text or not assistant_text.strip():
             assistant_text = (
+                "**Evaluasi Jawaban:** Jawaban Anda sudah punya arah, tapi masih kurang detail teknis dan trade-off yang dipilih.\n"
+                "**Tindak Lanjut:** Tambahkan alasan teknis, metrik hasil, dan risiko dari pendekatan Anda.\n"
                 f"**Pertanyaan Interview:** Jelaskan bagaimana Anda memecah masalah teknis kompleks untuk pertanyaan {next_question}/{session_max_questions}.\n"
                 "**Petunjuk Jawaban Kuat:** Gunakan struktur langkah, trade-off, dan metrik dampak."
             )

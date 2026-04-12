@@ -7,6 +7,8 @@ import logging
 from datetime import datetime
 from shared.auth import authenticate, error_response, success_response
 from shared.cosmos_client import get_container, check_and_regen_credits
+from shared.plan_access import get_plan_runtime, get_plan_rank
+from shared.redis_cache import get_json, set_json, hash_text
 
 
 def _extract_gap_name(gap_raw: str) -> str:
@@ -18,10 +20,10 @@ def _extract_gap_name(gap_raw: str) -> str:
     return gap_raw.strip() or "General Skill"
 
 
-def _build_resources(skill: str):
+def _build_resources(skill: str, detail_mode: str, resources_per_path: int):
     s = (skill or "general").lower()
     query = skill.replace(" ", "+")
-    return [
+    resources = [
         {
             "type": "article",
             "title": f"Core Concepts of {skill}",
@@ -43,6 +45,37 @@ def _build_resources(skill: str):
         },
     ]
 
+    if detail_mode in {"guided", "deep", "expert"}:
+        resources.append(
+            {
+                "type": "documentation",
+                "title": f"Official {skill} Docs",
+                "url": f"https://www.google.com/search?q={query}+official+documentation",
+                "platform": "Official Docs",
+                "description": "Pelajari dokumentasi resmi agar keputusan teknismu lebih presisi"
+            }
+        )
+
+    if detail_mode in {"deep", "expert"}:
+        resources.append(
+            {
+                "type": "practice",
+                "title": f"Portfolio Sprint: {skill}",
+                "description": f"Bangun studi kasus production-style untuk menutup gap {skill} dan ukur hasilnya dengan metrik nyata"
+            }
+        )
+
+    if detail_mode == "expert":
+        resources.append(
+            {
+                "type": "system-design",
+                "title": f"Advanced Design Review for {skill}",
+                "description": "Latih trade-off, reliability, observability, dan scaling untuk level senior"
+            }
+        )
+
+    return resources[:resources_per_path]
+
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Generate Learning Path function triggered")
@@ -53,6 +86,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         user = check_and_regen_credits(user_id, email)
+        runtime = get_plan_runtime(user, "learning_path")
+        plan = runtime["plan"]
         if not user.get("raw_cv_text"):
             return error_response("CV is not uploaded yet. Please upload your CV in CV Manager first.", 403)
 
@@ -72,12 +107,31 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if analysis.get("userId") != user_id:
             return error_response("Analysis not found", 404)
 
+        redis_cache_key = f"fyjob:learning-path:cache:{hash_text(user_id, analysis_id, plan)}"
+        cached_path = get_json(redis_cache_key)
+        if isinstance(cached_path, dict):
+            return success_response({
+                "learning_path": cached_path,
+                "analysis_id": analysis_id,
+                "credits_remaining": user.get("credits_remaining", 0),
+                "cached": True,
+                "cache_source": "redis",
+                "plan": plan,
+                "priority_lane": runtime["lane"],
+            })
+
         # Return existing learning path if already generated
-        if analysis.get("learning_path"):
+        stored_plan = analysis.get("learning_path_plan")
+        if analysis.get("learning_path") and get_plan_rank(stored_plan or "free") >= get_plan_rank(plan):
+            set_json(redis_cache_key, analysis["learning_path"], int(runtime.get("cache_ttl_sec", 3600)))
             return success_response({
                 "learning_path": analysis["learning_path"],
                 "analysis_id": analysis_id,
-                "credits_remaining": user.get("credits_remaining", 0)
+                "credits_remaining": user.get("credits_remaining", 0),
+                "cached": True,
+                "cache_source": "cosmos",
+                "plan": plan,
+                "priority_lane": runtime["lane"],
             })
 
         # Build deterministic learning path from top 3 gaps (free, no LLM call)
@@ -91,20 +145,24 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if not gap_names:
             gap_names = ["Problem Solving", "Communication", "System Thinking"]
 
-        selected = gap_names[:3]
+        selected = gap_names[: int(runtime.get("path_count", 3))]
         paths = []
         total_hours = 0
         for idx, gap_name in enumerate(selected, start=1):
-            est_hours = 8 + (idx * 2)
+            est_hours = 8 + (idx * 2) + (2 if runtime.get("detail_mode") in {"deep", "expert"} else 0)
             total_hours += est_hours
             paths.append({
                 "path_number": idx,
                 "skill_gap": gap_name,
                 "topic": f"{gap_name} Sprint",
-                "description": f"Fokus menutup gap {gap_name} dengan kombinasi belajar konsep dan praktik project.",
+                "description": (
+                    f"Fokus menutup gap {gap_name} dengan kombinasi belajar konsep dan praktik project."
+                    if runtime.get("detail_mode") == "compact"
+                    else f"Fokus menutup gap {gap_name} dengan urutan belajar yang jelas, praktik terukur, dan bukti portfolio untuk upgrade peluang interview."
+                ),
                 "estimated_hours": est_hours,
                 "difficulty": "intermediate" if idx > 1 else "beginner",
-                "resources": _build_resources(gap_name),
+                "resources": _build_resources(gap_name, str(runtime.get("detail_mode", "compact")), int(runtime.get("resources_per_path", 3))),
             })
 
         learning_path = {
@@ -115,12 +173,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Store in analysis record
         analysis["learning_path"] = learning_path
         analysis["learning_path_generated_at"] = datetime.utcnow().isoformat()
+        analysis["learning_path_plan"] = plan
+        analysis["learning_path_priority_lane"] = runtime["lane"]
         history_container.upsert_item(analysis)
+        set_json(redis_cache_key, learning_path, int(runtime.get("cache_ttl_sec", 3600)))
 
         return success_response({
             "learning_path": learning_path,
             "analysis_id": analysis_id,
-            "credits_remaining": user.get("credits_remaining", 0)
+            "credits_remaining": user.get("credits_remaining", 0),
+            "cached": False,
+            "plan": plan,
+            "priority_lane": runtime["lane"],
         })
 
     except Exception as e:
