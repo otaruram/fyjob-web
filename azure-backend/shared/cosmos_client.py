@@ -198,8 +198,12 @@ def _parse_stored_datetime(value: str, user_tz: ZoneInfo) -> datetime:
     Parse stored ISO datetime safely.
     Naive datetimes are treated as UTC for backward compatibility.
     """
+    raw = str(value or "").strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+
     try:
-        dt = datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(raw)
     except Exception:
         return datetime(2000, 1, 1, tzinfo=user_tz)
 
@@ -232,7 +236,10 @@ def get_effective_plan(user: Dict[str, Any]) -> str:
         exp_raw = user.get("plan_expires_at")
         if exp_raw:
             try:
-                expires = datetime.fromisoformat(exp_raw)
+                exp_text = str(exp_raw).strip()
+                if exp_text.endswith("Z"):
+                    exp_text = exp_text[:-1] + "+00:00"
+                expires = datetime.fromisoformat(exp_text)
                 if expires.tzinfo is None:
                     expires = expires.replace(tzinfo=timezone.utc)
                 if expires < datetime.now(timezone.utc):

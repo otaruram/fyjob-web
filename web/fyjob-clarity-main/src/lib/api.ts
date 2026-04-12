@@ -281,6 +281,15 @@ export interface AdminOverview {
   least_used_feature?: { feature: string; count: number } | null;
 }
 
+export interface AdminResetUsersResult {
+  ok: boolean;
+  updated_count: number;
+  trial_days: number;
+  plan: 'pro';
+  expires_at: string;
+  credits_cap: number;
+}
+
 export interface AdminTestingPlanResult {
   target_user_id: string;
   testing_plan_override?: 'free' | 'basic' | 'pro' | 'admin' | null;
@@ -479,6 +488,14 @@ export const adminSetTestingPlan = (testingPlan: 'free' | 'basic' | 'pro' | 'adm
     action: 'set-testing-plan',
     targetUserId,
     testingPlan,
+  });
+
+/** POST /api/user-stats action=reset-non-admin-users */
+export const adminResetNonAdminUsers = (trialDays = 7) =>
+  fetchApi<AdminResetUsersResult>('/api/user-stats', 'POST', {
+    action: 'reset-non-admin-users',
+    confirm: 'RESET_NON_ADMIN_USERS',
+    trialDays,
   });
 
 // ═══════════════════════════════════════════════════

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import {
   adminAddUserCredits,
+  adminResetNonAdminUsers,
   adminSetTestingPlan,
   adminSetUserBan,
   getAdminActivity,
@@ -26,6 +27,8 @@ const AdminCenter = () => {
   const [search, setSearch] = useState("");
   const [creditInput, setCreditInput] = useState<Record<string, number>>({});
   const [testingPlan, setTestingPlan] = useState<"free" | "basic" | "pro" | "admin" | "off">("off");
+  const [resetTrialDays, setResetTrialDays] = useState<number>(7);
+  const [resetConfirmText, setResetConfirmText] = useState("");
 
   const loadAll = async (searchValue = "") => {
     setLoading(true);
@@ -108,6 +111,22 @@ const AdminCenter = () => {
     }
   };
 
+  const handleResetAllNonAdmin = async () => {
+    if (resetConfirmText.trim().toUpperCase() !== "RESET_NON_ADMIN_USERS") {
+      toast.error("Ketik RESET_NON_ADMIN_USERS untuk konfirmasi.");
+      return;
+    }
+
+    try {
+      const result = await adminResetNonAdminUsers(resetTrialDays);
+      toast.success(`Reset selesai: ${result.updated_count} user non-admin di-set ke Pro trial.`);
+      setResetConfirmText("");
+      await loadAll(search.trim());
+    } catch (e: any) {
+      toast.error(e?.message || "Reset users gagal");
+    }
+  };
+
   const usageRows = useMemo(() => activity?.usage || [], [activity]);
 
   if (loading) {
@@ -179,6 +198,40 @@ const AdminCenter = () => {
               </select>
               <button onClick={handleTestingPlanSave} className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-card/60">
                 Apply
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="terminal-shell p-4 sm:p-5">
+          <div className="flex flex-col gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Reset Non-Admin to New User</h2>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Set semua user non-admin ke Pro trial baru, reset credits ke cap Pro, dan buka ulang onboarding/welcome flow.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={resetTrialDays}
+                onChange={(e) => setResetTrialDays(Math.max(1, Math.min(30, Number(e.target.value) || 7)))}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                placeholder="Trial days"
+              />
+              <input
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm sm:col-span-2"
+                placeholder="Type RESET_NON_ADMIN_USERS"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleResetAllNonAdmin}
+                className="px-4 py-2 rounded-lg border border-red-400/40 text-sm text-red-200 hover:bg-red-500/10"
+              >
+                Reset All Non-Admin Users
               </button>
             </div>
           </div>

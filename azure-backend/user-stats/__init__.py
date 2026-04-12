@@ -170,6 +170,65 @@ def _admin_add_credits(admin_user_id: str, target_user_id: str, amount: int):
     }
 
 
+def _admin_reset_non_admin_users(admin_user_id: str, trial_days: int = 7):
+    users = get_container("Users")
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(days=max(1, int(trial_days or 7)))).isoformat()
+    now_iso = now.isoformat()
+    pro_cap = get_plan_credit_cap("pro")
+
+    rows = list(users.query_items(
+        "SELECT c.id FROM c WHERE c.role != @admin_role",
+        parameters=[{"name": "@admin_role", "value": "admin"}],
+        enable_cross_partition_query=True,
+    ))
+
+    updated = 0
+    for row in rows:
+        target_user_id = str(row.get("id") or "").strip()
+        if not target_user_id:
+            continue
+        try:
+            user = users.read_item(item=target_user_id, partition_key=target_user_id)
+            user["role"] = "user"
+            user["plan"] = "pro"
+            user["is_trial"] = True
+            user["trial_started_at"] = now_iso
+            user["plan_expires_at"] = expires_at
+            user["plan_activated_at"] = now_iso
+            user["credits_remaining"] = pro_cap
+            user["last_regen_date"] = now_iso
+            user["is_banned"] = False
+            user["banned_reason"] = ""
+            user["banned_at"] = None
+            user["welcome_email_sent_at"] = None
+            user["onboarding_welcome_seen_at"] = None
+            user["testing_plan_override"] = None
+            users.upsert_item(user)
+            updated += 1
+        except Exception as exc:
+            logging.warning(f"Failed reset for user {target_user_id}: {exc}")
+
+    log_admin_audit(
+        action="reset-non-admin-users",
+        admin_user_id=admin_user_id,
+        payload={
+            "updated_count": updated,
+            "trial_days": max(1, int(trial_days or 7)),
+            "plan": "pro",
+        },
+    )
+
+    return {
+        "ok": True,
+        "updated_count": updated,
+        "trial_days": max(1, int(trial_days or 7)),
+        "plan": "pro",
+        "expires_at": expires_at,
+        "credits_cap": pro_cap,
+    }
+
+
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("User Stats function triggered")
 
@@ -224,6 +283,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 if amount <= 0:
                     return error_response("amount must be > 0", 400)
                 return success_response(_admin_add_credits(user_id, target_user_id, amount))
+
+            if action == "reset-non-admin-users":
+                if not _is_admin_user(user):
+                    return error_response("Admin access required", 403)
+
+                confirm = str(body.get("confirm") or "").strip().upper()
+                if confirm != "RESET_NON_ADMIN_USERS":
+                    return error_response("confirm must be RESET_NON_ADMIN_USERS", 400)
+
+                trial_days = int(body.get("trialDays") or 7)
+                return success_response(_admin_reset_non_admin_users(user_id, trial_days))
 
         # Get user with credit regen check
         credits = user.get("credits_remaining", get_plan_credit_cap(get_effective_plan(user)))

@@ -18,6 +18,7 @@ from shared.cosmos_client import (
     get_secret,
     ALLOWED_ADMIN_EMAIL,
     get_plan_credit_cap,
+    get_effective_plan,
 )
 
 # ─── Louvin.dev config ───
@@ -50,23 +51,8 @@ def _is_admin(email: str) -> bool:
 
 
 def _get_user_plan(user_doc: dict) -> str:
-    """Derive effective plan. Admin always gets 'admin', otherwise use stored plan or 'free'."""
-    email = user_doc.get("email", "")
-    if _is_admin(email):
-        return "admin"
-    plan = user_doc.get("plan", "free")
-    # Check expiry
-    plan_expires_at = user_doc.get("plan_expires_at")
-    if plan in ("basic", "pro") and plan_expires_at:
-        try:
-            expires = datetime.fromisoformat(plan_expires_at)
-            if expires.tzinfo is None:
-                expires = expires.replace(tzinfo=timezone.utc)
-            if expires < datetime.now(timezone.utc):
-                return "free"
-        except Exception:
-            pass
-    return plan if plan in ("free", "basic", "pro") else "free"
+    """Use shared plan resolution so payment status matches other endpoints."""
+    return get_effective_plan(user_doc)
 
 
 def _create_louvin_transaction(amount: int, currency: str, label: str, user_id: str, plan: str, email: str, success_url: str, cancel_url: str, payment_type: str) -> dict:
