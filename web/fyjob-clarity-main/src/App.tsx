@@ -17,6 +17,7 @@ import Encryption from "./pages/Encryption.tsx";
 import AdminCenter from "./pages/AdminCenter.tsx";
 import Upgrade from "./pages/Upgrade.tsx";
 import Checkout from "./pages/Checkout.tsx";
+import PrivacyPolicy from "./pages/PrivacyPolicy.tsx";
 import { TranslationProvider } from "@/lib/i18n";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
@@ -90,6 +91,7 @@ const App = () => (
               <Routes>
                 {/* Public landing page */}
                 <Route path="/" element={<Index />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
                 
                 {/* ALL features require authentication */}

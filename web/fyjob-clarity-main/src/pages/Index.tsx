@@ -62,7 +62,10 @@ const Index = () => {
       {/* Footer */}
       <footer className="border-t border-border py-10 sm:py-12 bg-background/50">
         <div className="container mx-auto px-4 sm:px-6 text-center text-xs sm:text-sm text-muted-foreground">
-          © 2026 FYJOB. The unfair advantage for hyper-competitive engineering roles.
+          <div>© 2026 FYJOB. The unfair advantage for hyper-competitive engineering roles.</div>
+          <div className="mt-2">
+            <Link to="/privacy" className="transition-colors hover:text-foreground">Privacy Policy</Link>
+          </div>
         </div>
       </footer>
     </div>
