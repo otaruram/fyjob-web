@@ -576,7 +576,13 @@ const InterviewLite = () => {
     setIsSttLoading(true);
     try {
       const arrayBuffer = await blob.arrayBuffer();
-      const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const bytes = new Uint8Array(arrayBuffer);
+      let audioBase64 = "";
+      const CHUNK = 8192;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        audioBase64 += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      audioBase64 = btoa(audioBase64);
       const audioUrl = registerAudioUrl(URL.createObjectURL(blob));
       const res = await sttInterviewLite(audioBase64, language, blob.type || undefined);
       const transcript = res.transcriptText.trim();
@@ -588,11 +594,11 @@ const InterviewLite = () => {
         });
       } else {
         setError("No speech detected. Try again.");
-        setIsAnswering(true);
+        setIsAnswering(false);
       }
     } catch (speechError: any) {
       setError(speechError?.message || "Speech recognition failed.");
-      setIsAnswering(true);
+      setIsAnswering(false);
     } finally {
       setIsSttLoading(false);
     }
