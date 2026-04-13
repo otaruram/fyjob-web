@@ -28,13 +28,26 @@ const requestAcrossBases = async (
   baseCandidates: string[]
 ): Promise<Response> => {
   let lastNetworkError: unknown = null;
+  let lastResponse: Response | null = null;
 
   for (const base of baseCandidates) {
     try {
-      return await fetch(`${base}${endpoint}`, requestInit);
+      const response = await fetch(`${base}${endpoint}`, requestInit);
+
+      // If this base doesn't expose the endpoint, try the next candidate.
+      if (response.status === 404) {
+        lastResponse = response;
+        continue;
+      }
+
+      return response;
     } catch (networkErr) {
       lastNetworkError = networkErr;
     }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
   }
 
   throw lastNetworkError instanceof Error ? lastNetworkError : new Error('Failed to connect to API');
