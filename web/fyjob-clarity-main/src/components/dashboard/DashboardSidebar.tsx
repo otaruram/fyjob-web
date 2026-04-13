@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getAnalysisHistory, getUserStats } from "@/lib/api";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 
-const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase().replace(/\s+/g, "");
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "okitr52@gmail.com").trim().toLowerCase().replace(/\s+/g, "");
 
 const DashboardSidebar = () => {
   const { state } = useSidebar();

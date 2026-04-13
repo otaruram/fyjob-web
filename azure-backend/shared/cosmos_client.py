@@ -55,7 +55,7 @@ def get_secret(name: str) -> Optional[str]:
 _cosmos_client = None
 DATABASE_NAME = "FypodDB"
 ADMIN_DATABASE_NAME = os.environ.get("COSMOS_ADMIN_DATABASE_NAME", "FypodAdminDB")
-ALLOWED_ADMIN_EMAIL = (os.environ.get("ALLOWED_ADMIN_EMAIL") or "").strip().lower()
+ALLOWED_ADMIN_EMAIL = (os.environ.get("ALLOWED_ADMIN_EMAIL") or "okitr52@gmail.com").strip().lower()
 MAX_CREDITS = 5
 PLAN_CREDIT_CAPS = {
     "free": 5,

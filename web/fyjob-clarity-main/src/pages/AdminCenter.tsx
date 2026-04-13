@@ -16,7 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Ban, Coins, Search, Shield, Users, Activity } from "lucide-react";
 
-const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase().replace(/\s+/g, "");
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "okitr52@gmail.com").trim().toLowerCase().replace(/\s+/g, "");
 
 const AdminCenter = () => {
   const { user } = useAuth();
