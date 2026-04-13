@@ -26,6 +26,7 @@ from shared.cosmos_client import (
 )
 from shared.llm_service import call_llm, MODEL_GEMINI_FLASH, MODEL_GEMINI_PRO, MODEL_GEMINI_3_PRO
 from shared.redis_cache import hash_text
+from shared.plan_access import get_interview_access, get_interview_lock_message
 
 try:
     import redis
@@ -142,6 +143,12 @@ def _resolve_interview_profile(user_doc: dict, email: str = ""):
 
     effective_plan = get_effective_plan(user_doc)
     plan = _normalize_plan(effective_plan if effective_plan != "admin" else DEFAULT_PLAN)
+
+    # Event/trial users can access interview while still on effective free plan.
+    interview_access = get_interview_access(user_doc)
+    if plan == "free" and interview_access.get("enabled"):
+        plan = "basic"
+
     profile = INTERVIEW_PROFILE.get(plan, INTERVIEW_PROFILE["basic"])
     return profile, plan, False
 
@@ -625,9 +632,9 @@ def _text_to_speech(text: str, language: str):
 
 def _stt_action(user_id: str, email: str, body: dict):
     user = check_and_regen_credits(user_id, email)
-    profile, _plan, is_admin = _resolve_interview_profile(user, email)
-    if not is_admin and not bool(profile.get("speech_enabled", False)):
-        return error_response("Speech mode is available for Pro plan only", 403)
+    lock_message = get_interview_lock_message(user, "speech")
+    if lock_message:
+        return error_response(lock_message, 403)
 
     audio_base64 = body.get("audioBase64")
     language = body.get("language", "id")
@@ -664,9 +671,9 @@ def _stt_action(user_id: str, email: str, body: dict):
 
 def _tts_action(user_id: str, email: str, body: dict):
     user = check_and_regen_credits(user_id, email)
-    profile, _plan, is_admin = _resolve_interview_profile(user, email)
-    if not is_admin and not bool(profile.get("speech_enabled", False)):
-        return error_response("Speech mode is available for Pro plan only", 403)
+    lock_message = get_interview_lock_message(user, "speech")
+    if lock_message:
+        return error_response(lock_message, 403)
 
     text = body.get("text")
     language = body.get("language", "id")
@@ -727,12 +734,9 @@ def _start_session(user_id: str, email: str, body: dict):
         return error_response("CV is not uploaded yet. Please upload your CV in CV Manager first.", 403)
 
     profile, plan, is_admin = _resolve_interview_profile(user, email)
-
-    if not is_admin and plan == "free":
-        return error_response("Interview Lite hanya untuk Basic/Pro plan. Silakan upgrade terlebih dahulu.", 403)
-
-    if mode == "speech" and not is_admin and not bool(profile.get("speech_enabled", False)):
-        return error_response("Speech mode is available for Pro plan only", 403)
+    lock_message = get_interview_lock_message(user, mode)
+    if lock_message:
+        return error_response(lock_message, 403)
 
     max_questions = int(profile.get("max_questions", MAX_QUESTIONS_PER_SESSION))
     max_turns = int(profile.get("max_turns", MAX_TURNS))

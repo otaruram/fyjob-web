@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from .cosmos_client import get_effective_plan
@@ -124,6 +125,9 @@ PLAN_RUNTIMES: Dict[str, Dict[str, Any]] = {
     },
 }
 
+INTERVIEW_DISABLED_MESSAGE = "Interview Lite belum aktif untuk akun ini. Aktifkan plan/event terlebih dahulu."
+INTERVIEW_SPEECH_DISABLED_MESSAGE = "Speech mode is available for Pro plan only"
+
 
 def get_plan_runtime(user: Dict[str, Any], feature: str) -> Dict[str, Any]:
     plan = get_effective_plan(user)
@@ -150,3 +154,56 @@ def get_feature_lock_ttl(feature: str) -> int:
         "learning_path": int(os.environ.get("LEARNING_PATH_LOCK_TTL_SEC", "15")),
     }
     return defaults.get(feature, 15)
+
+
+def _has_active_plan_window(user: Dict[str, Any]) -> bool:
+    exp_raw = user.get("plan_expires_at")
+    if not exp_raw:
+        return False
+
+    try:
+        exp_text = str(exp_raw).strip()
+        if exp_text.endswith("Z"):
+            exp_text = exp_text[:-1] + "+00:00"
+        expires = datetime.fromisoformat(exp_text)
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return expires > datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+def get_interview_access(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Return interview access state based on effective plan and active event/trial window."""
+    plan = get_effective_plan(user)
+    is_admin = plan == "admin"
+    is_paid_plan = plan in {"basic", "pro"}
+    raw_plan = str(user.get("plan") or "").strip().lower()
+
+    # Event/trial users can temporarily unlock interview even when effective plan is free.
+    trial_or_event_active = _has_active_plan_window(user) and (
+        bool(user.get("is_trial")) or raw_plan == "free"
+    )
+
+    enabled = bool(is_admin or is_paid_plan or trial_or_event_active)
+    deep_quality = bool(is_admin or plan == "pro")
+    speech_enabled = bool(is_admin or plan == "pro")
+
+    return {
+        "enabled": enabled,
+        "quality": "deep" if deep_quality else "lite",
+        "speech_enabled": speech_enabled,
+        "event_active": bool(trial_or_event_active and plan == "free"),
+    }
+
+
+def get_interview_lock_message(user: Dict[str, Any], mode: str = "text") -> str:
+    access = get_interview_access(user)
+    if not bool(access.get("enabled", False)):
+        return INTERVIEW_DISABLED_MESSAGE
+
+    requested_mode = (mode or "text").strip().lower()
+    if requested_mode == "speech" and not bool(access.get("speech_enabled", False)):
+        return INTERVIEW_SPEECH_DISABLED_MESSAGE
+
+    return ""

@@ -3,8 +3,42 @@ import { supabase } from './supabase';
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const FALLBACK_API_BASE_URL = (
   import.meta.env.VITE_API_FALLBACK_BASE_URL ||
-  'https://fypodku-g4f2avb0aaewcyaw.indonesiacentral-01.azurewebsites.net'
+  (import.meta.env.DEV ? 'http://localhost:7071' : '')
 ).replace(/\/$/, '');
+
+const ORIGIN_API_BASE_URL = (typeof window !== 'undefined' ? window.location.origin : '').replace(/\/$/, '');
+
+const getApiBaseCandidates = () => {
+  const candidates = [API_BASE_URL, FALLBACK_API_BASE_URL, ORIGIN_API_BASE_URL].filter(Boolean);
+  return [...new Set(candidates)];
+};
+
+const buildRequestInit = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', token: string, body?: any): RequestInit => ({
+  method,
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  },
+  body: body ? JSON.stringify(body) : undefined,
+});
+
+const requestAcrossBases = async (
+  endpoint: string,
+  requestInit: RequestInit,
+  baseCandidates: string[]
+): Promise<Response> => {
+  let lastNetworkError: unknown = null;
+
+  for (const base of baseCandidates) {
+    try {
+      return await fetch(`${base}${endpoint}`, requestInit);
+    } catch (networkErr) {
+      lastNetworkError = networkErr;
+    }
+  }
+
+  throw lastNetworkError instanceof Error ? lastNetworkError : new Error('Failed to connect to API');
+};
 
 const decodeJwtPayload = (token?: string | null) => {
   if (!token) return null;
@@ -86,25 +120,13 @@ export const fetchApi = async <T>(
   const token = await getAuthToken();
   if (!token) throw new Error("Authentication required. Please login first.");
 
-  const callWithBase = async (baseUrl: string) =>
-    fetch(`${baseUrl}${endpoint}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-
-  let response: Response;
-  try {
-    response = await callWithBase(API_BASE_URL || FALLBACK_API_BASE_URL);
-  } catch (networkErr) {
-    if (!API_BASE_URL || API_BASE_URL === FALLBACK_API_BASE_URL) {
-      throw networkErr;
-    }
-    response = await callWithBase(FALLBACK_API_BASE_URL);
+  const baseCandidates = getApiBaseCandidates();
+  if (!baseCandidates.length) {
+    throw new Error('API base URL not configured. Set VITE_API_BASE_URL.');
   }
+
+  const requestInit = buildRequestInit(method, token, body);
+  const response = await requestAcrossBases(endpoint, requestInit, baseCandidates);
 
   if (!response.ok) {
     if (response.status === 401 && allowRetry) {
@@ -145,6 +167,7 @@ export interface UserStats {
     enabled?: boolean;
     quality: 'lite' | 'deep';
     speech_enabled: boolean;
+    event_active?: boolean;
   };
   next_regen_time: string;
   total_analyses: number;

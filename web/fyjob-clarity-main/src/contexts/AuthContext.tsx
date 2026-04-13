@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
 const EXT_AUTH_BRIDGE_KEY = 'fyjob_auth_bridge_v1';
+const EXT_AUTH_SYNC_EVENT = 'fyjob:auth-bridge-sync';
 
 interface AuthContextType {
   user: User | null;
@@ -23,10 +24,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const notifyAuthBridgeSync = (state: 'signed_in' | 'signed_out') => {
+    try {
+      window.dispatchEvent(new CustomEvent(EXT_AUTH_SYNC_EVENT, { detail: { state, ts: Date.now() } }));
+    } catch {
+      // ignore bridge notification errors
+    }
+  };
+
   const syncExtensionBridge = (currentSession: Session | null) => {
     try {
       if (!currentSession?.access_token) {
         localStorage.removeItem(EXT_AUTH_BRIDGE_KEY);
+        notifyAuthBridgeSync('signed_out');
         return;
       }
 
@@ -40,6 +50,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           ts: Date.now(),
         })
       );
+      notifyAuthBridgeSync('signed_in');
     } catch {
       // ignore bridge failures
     }

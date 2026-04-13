@@ -69,6 +69,7 @@ const MODE_LABEL: Record<InterviewMode, string> = {
 };
 
 const INTERVIEW_CACHE_KEY = "fyjob_interview_lite_cache_v1";
+const SPEECH_LOCK_MESSAGE = "Speech mode hanya untuk Pro/Admin plan.";
 
 const makeMessageId = () => {
   const randomPart = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -184,6 +185,7 @@ const InterviewLite = () => {
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [qualityMode, setQualityMode] = useState<"lite" | "deep">("lite");
   const [interviewEnabled, setInterviewEnabled] = useState(true);
+  const [eventActive, setEventActive] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [messages, setMessages] = useState<InterviewMessage[]>([]);
@@ -373,6 +375,7 @@ const InterviewLite = () => {
         setIsAdmin(adminMode);
         setInterviewEnabled(Boolean(stats?.interview_access?.enabled || adminMode));
         setSpeechEnabled(Boolean(stats?.interview_access?.speech_enabled || adminMode));
+        setEventActive(Boolean(stats?.interview_access?.event_active));
         setQualityMode((stats?.interview_access?.quality as "lite" | "deep") || (adminMode ? "deep" : "lite"));
         setSessionCost(adminMode ? 0 : mode === "speech" ? 3 : 2);
 
@@ -451,7 +454,7 @@ const InterviewLite = () => {
   const startInterview = async () => {
     if (!selectedAnalysisId) return;
     if (mode === "speech" && !speechEnabled) {
-      setError("Speech mode hanya untuk Pro/Admin plan.");
+      setError(SPEECH_LOCK_MESSAGE);
       return;
     }
     if (sessionId && messages.length > 0) {
@@ -630,6 +633,9 @@ const InterviewLite = () => {
             <div className="mb-2 flex items-center gap-2">
               <Crown className="h-4 w-4 text-primary" />
               <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">Premium</Badge>
+              {eventActive && (
+                <Badge variant="outline" className="border-emerald-300/40 bg-emerald-100/30 text-emerald-700">Event Active</Badge>
+              )}
             </div>
             <h1 className="text-2xl font-bold text-foreground">AI Interview Lite</h1>
             <p className="mt-1 text-sm text-muted-foreground">Push-to-talk style: AI asks, you answer, lalu AI langsung evaluasi dan lanjut ke pertanyaan berikutnya.</p>
@@ -641,7 +647,7 @@ const InterviewLite = () => {
             <p className="mt-1 text-xs text-muted-foreground">Interview quality: {qualityMode === "deep" ? "Deep Coach" : "Lite Coach"}</p>
             {!interviewEnabled && (
               <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
-                Interview Lite khusus Basic/Pro plan. Upgrade dulu untuk mulai latihan interview.
+                Interview Lite belum aktif untuk akun ini. Aktifkan event atau upgrade plan untuk mulai latihan interview.
                 <div className="mt-2">
                   <Button size="sm" variant="outline" onClick={() => navigate("/dashboard/upgrade")}>Upgrade Plan</Button>
                 </div>
@@ -680,7 +686,7 @@ const InterviewLite = () => {
                 onValueChange={(value) => {
                   const nextMode = value as InterviewMode;
                   if (nextMode === "speech" && !speechEnabled) {
-                    setError("Speech mode hanya untuk Pro/Admin plan.");
+                    setError(SPEECH_LOCK_MESSAGE);
                     return;
                   }
                   setMode(nextMode);

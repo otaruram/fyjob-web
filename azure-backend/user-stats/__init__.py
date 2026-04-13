@@ -15,8 +15,9 @@ from shared.cosmos_client import (
     get_effective_plan,
     get_plan_credit_cap,
     get_plan_daily_regen,
+    ALLOWED_ADMIN_EMAIL,
 )
-from shared.plan_access import get_plan_runtime
+from shared.plan_access import get_plan_runtime, get_interview_access
 from shared.email_service import send_security_alert
 from shared.email_service import send_plan_expiry_reminder
 
@@ -27,7 +28,7 @@ def _normalize_email(email: str) -> str:
 
 def _is_admin_user(user_doc: dict) -> bool:
     email = _normalize_email(user_doc.get("email", ""))
-    return email == "okitr52@gmail.com"
+    return bool(ALLOWED_ADMIN_EMAIL) and email == ALLOWED_ADMIN_EMAIL
 
 
 def _build_feature_usage(history_container, interview_container, users_container):
@@ -65,7 +66,7 @@ def _admin_overview():
 
     admin_override_rows = list(users.query_items(
         "SELECT TOP 1 c.testing_plan_override, c.email, c.role FROM c WHERE LOWER(c.email) = @email",
-        parameters=[{"name": "@email", "value": "okitr52@gmail.com"}],
+        parameters=[{"name": "@email", "value": ALLOWED_ADMIN_EMAIL}],
         enable_cross_partition_query=True,
     ))
     admin_doc = admin_override_rows[0] if admin_override_rows else {}
@@ -77,7 +78,7 @@ def _admin_overview():
         "most_used_feature": usage_sorted[0] if usage_sorted else None,
         "least_used_feature": usage_sorted[-1] if usage_sorted else None,
         "testing_plan_override": admin_doc.get("testing_plan_override"),
-        "effective_plan": get_effective_plan(admin_doc or {"role": "admin", "email": "okitr52@gmail.com"}),
+        "effective_plan": get_effective_plan(admin_doc or {"role": "admin", "email": ALLOWED_ADMIN_EMAIL}),
     }
 
 
@@ -392,6 +393,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         chat_runtime = get_plan_runtime(user, "chat")
         quiz_runtime = get_plan_runtime(user, "quiz")
         learning_path_runtime = get_plan_runtime(user, "learning_path")
+        interview_access = get_interview_access(user)
 
         plan_expiry_notice, expiry_reminder_key = _build_plan_expiry_notice_and_key(plan, plan_expires_at)
 
@@ -472,9 +474,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "plan_expiry_notice": plan_expiry_notice,
             "welcome_notice": welcome_notice,
             "interview_access": {
-                "enabled": bool(is_admin or plan in ("basic", "pro")),
-                "quality": "deep" if (is_admin or plan == "pro") else "lite",
-                "speech_enabled": bool(is_admin or plan == "pro"),
+                "enabled": bool(interview_access["enabled"]),
+                "quality": str(interview_access["quality"]),
+                "speech_enabled": bool(interview_access["speech_enabled"]),
+                "event_active": bool(interview_access.get("event_active", False)),
             },
             "credit_regen": {
                 "daily_add": daily_regen,

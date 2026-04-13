@@ -7,15 +7,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getAnalysisHistory, getUserStats } from "@/lib/api";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase().replace(/\s+/g, "");
+
 const DashboardSidebar = () => {
   const { state } = useSidebar();
   const { t } = useTranslation();
   const { signOut, user } = useAuth();
   const navigate = useNavigate();
   const collapsed = state === "collapsed";
-  const isAllowedAdminEmail = (user?.email || "").trim().toLowerCase().replace(/\s+/g, "") === "okitr52@gmail.com";
+  const isAllowedAdminEmail = (user?.email || "").trim().toLowerCase().replace(/\s+/g, "") === ADMIN_EMAIL;
   const [hasAnalysis, setHasAnalysis] = useState(false);
   const [planBadge, setPlanBadge] = useState<string>("FREE");
+  const [interviewEnabled, setInterviewEnabled] = useState(false);
   const isAdmin = isAllowedAdminEmail;
 
   useEffect(() => {
@@ -37,8 +40,11 @@ const DashboardSidebar = () => {
         const stats = await getUserStats();
         const normalized = String(stats?.plan || "free").toUpperCase();
         setPlanBadge(normalized === "ADMIN" ? "ADMIN" : normalized);
+        const adminMode = stats?.role === "admin" || isAllowedAdminEmail;
+        setInterviewEnabled(Boolean(stats?.interview_access?.enabled || adminMode));
       } catch {
         setPlanBadge("FREE");
+        setInterviewEnabled(isAllowedAdminEmail);
       }
     };
 
@@ -161,7 +167,7 @@ const DashboardSidebar = () => {
             <SidebarMenu className="space-y-1">
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  {hasAnalysis ? (
+                  {interviewEnabled ? (
                     <NavLink
                       to="/dashboard/interview-lite"
                       className={collapsed
@@ -183,15 +189,18 @@ const DashboardSidebar = () => {
                         ? "mx-auto flex h-9 w-9 items-center justify-center rounded-md border border-dashed border-border/60 text-muted-foreground/70"
                         : "flex w-full items-center rounded-lg border border-dashed border-border/60 px-2.5 py-2 text-muted-foreground/70"
                       }
-                      title="Analyze at least one job to enable"
+                      title="Interview Lite requires active plan/event access"
                     >
                       <Mic className={`h-4 w-4 shrink-0 ${collapsed ? "mr-0" : "mr-3"}`} />
-                      {!collapsed && <span>AI Interview Lite (Locked)</span>}
+                      {!collapsed && <span>AI Interview Lite (Locked Plan/Event)</span>}
                     </button>
                   )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
+            {!collapsed && interviewEnabled && !hasAnalysis && (
+              <p className="px-2.5 pt-1 text-[11px] text-muted-foreground">Scan minimal 1 job dulu untuk mulai interview.</p>
+            )}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

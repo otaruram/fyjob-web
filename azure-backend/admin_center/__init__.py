@@ -13,13 +13,21 @@ from typing import Dict, Any, List
 import azure.functions as func
 
 from shared.auth import authenticate, error_response, success_response
-from shared.cosmos_client import get_container, log_admin_audit, get_effective_plan, get_plan_credit_cap
+from shared.cosmos_client import (
+    get_container,
+    log_admin_audit,
+    get_effective_plan,
+    get_plan_credit_cap,
+    ALLOWED_ADMIN_EMAIL,
+)
 
-ALLOWED_ADMIN_EMAIL = "okitr52@gmail.com"
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower().replace(" ", "")
 
 
 def is_allowed_admin_email(email: str) -> bool:
-    return (email or "").strip().lower().replace(" ", "") == ALLOWED_ADMIN_EMAIL
+    return bool(ALLOWED_ADMIN_EMAIL) and _normalize_email(email) == ALLOWED_ADMIN_EMAIL
 
 
 def _get_requester(user_id: str) -> Dict[str, Any]:
@@ -33,7 +41,7 @@ def _ensure_admin(user_id: str):
     except Exception:
         return None, error_response("Requester not found", 404)
 
-    user_email = str(user.get("email") or "").strip().lower().replace(" ", "")
+    user_email = _normalize_email(str(user.get("email") or ""))
     if not is_allowed_admin_email(user_email):
         return None, error_response("Admin access required", 403)
 

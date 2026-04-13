@@ -16,9 +16,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Ban, Coins, Search, Shield, Users, Activity } from "lucide-react";
 
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "").trim().toLowerCase().replace(/\s+/g, "");
+
 const AdminCenter = () => {
   const { user } = useAuth();
-  const isAllowedAdminEmail = (user?.email || "").trim().toLowerCase().replace(/\s+/g, "") === "okitr52@gmail.com";
+  const isAllowedAdminEmail = (user?.email || "").trim().toLowerCase().replace(/\s+/g, "") === ADMIN_EMAIL;
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<AdminOverview | null>(null);

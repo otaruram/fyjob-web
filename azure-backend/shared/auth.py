@@ -44,7 +44,6 @@ def _get_jwks_client(issuer_url: Optional[str] = None):
         or SUPABASE_URL
         or os.environ.get("SUPABASE_URL", "")
         or get_secret("SUPABASE_URL")
-        or "https://iplciyfnwwiyjtvrvqza.supabase.co"
     ).rstrip("/")
 
     if not issuer:

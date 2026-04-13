@@ -6,6 +6,7 @@ import { getAuthToken } from "@/lib/api";
 import { toast } from "sonner";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:7071";
+const DEFAULT_TEST_EMAIL = import.meta.env.VITE_ALERT_TEST_EMAIL_DEFAULT || "";
 
 interface AlertPrefs {
   email_weekly_summary: boolean;
@@ -52,7 +53,7 @@ const EMAIL_ALERT_ITEMS: Array<{
 const Alerts = () => {
   const [prefs, setPrefs] = useState<AlertPrefs>(DEFAULT);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [testEmailTo, setTestEmailTo] = useState("okitr52@gmail.com");
+  const [testEmailTo, setTestEmailTo] = useState(DEFAULT_TEST_EMAIL);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingEmail, setTestingEmail] = useState(false);
