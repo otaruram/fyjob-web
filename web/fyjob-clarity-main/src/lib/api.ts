@@ -1,15 +1,16 @@
 import { supabase } from './supabase';
 
+const DEFAULT_CLOUD_API_BASE_URL = 'https://fypodku-g4f2avb0aaewcyaw.indonesiacentral-01.azurewebsites.net';
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const FALLBACK_API_BASE_URL = (
   import.meta.env.VITE_API_FALLBACK_BASE_URL ||
-  (import.meta.env.DEV ? 'http://localhost:7071' : '')
+  (import.meta.env.DEV ? 'http://localhost:7071' : DEFAULT_CLOUD_API_BASE_URL)
 ).replace(/\/$/, '');
 
 const ORIGIN_API_BASE_URL = (typeof window !== 'undefined' ? window.location.origin : '').replace(/\/$/, '');
 
 const getApiBaseCandidates = () => {
-  const candidates = [API_BASE_URL, FALLBACK_API_BASE_URL, ORIGIN_API_BASE_URL].filter(Boolean);
+  const candidates = [FALLBACK_API_BASE_URL, API_BASE_URL, ORIGIN_API_BASE_URL].filter(Boolean);
   return [...new Set(candidates)];
 };
 
