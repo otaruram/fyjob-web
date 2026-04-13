@@ -153,8 +153,23 @@ def authenticate(req: func.HttpRequest):
     # Global access control: blocked users cannot access API endpoints.
     try:
         users = get_container("Users")
-        user_doc = users.read_item(item=user_id, partition_key=user_id)
-        if bool(user_doc.get("is_banned")):
+        user_doc = None
+
+        try:
+            user_doc = users.read_item(item=user_id, partition_key=user_id)
+        except Exception:
+            # Fallback: during account migration/duplicates, check by email too.
+            normalized_email = str(email or "").strip().lower().replace(" ", "")
+            if normalized_email:
+                rows = list(users.query_items(
+                    "SELECT TOP 1 c.is_banned, c.banned_reason FROM c WHERE IS_DEFINED(c.email) AND LOWER(c.email) = @email AND c.is_banned = true",
+                    parameters=[{"name": "@email", "value": normalized_email}],
+                    enable_cross_partition_query=True,
+                ))
+                if rows:
+                    user_doc = rows[0]
+
+        if user_doc and bool(user_doc.get("is_banned")):
             return None, None, func.HttpResponse(
                 json.dumps({
                     "error": "Account is blocked by admin",

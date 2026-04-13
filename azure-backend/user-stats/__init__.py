@@ -104,6 +104,26 @@ def _admin_users(search: str = "", limit: int = 40):
     return {"users": rows}
 
 
+def _resolve_target_user_ids(target_user_id: str):
+    """Resolve all user doc IDs that belong to the same normalized email as target."""
+    users = get_container("Users")
+    target = users.read_item(item=target_user_id, partition_key=target_user_id)
+    target_email = _normalize_email(str(target.get("email") or ""))
+
+    if not target_email:
+        return [target_user_id]
+
+    rows = list(users.query_items(
+        "SELECT c.id FROM c WHERE IS_DEFINED(c.email) AND LOWER(c.email) = @email",
+        parameters=[{"name": "@email", "value": target_email}],
+        enable_cross_partition_query=True,
+    ))
+    ids = [str(r.get("id") or "").strip() for r in rows if str(r.get("id") or "").strip()]
+    if target_user_id not in ids:
+        ids.append(target_user_id)
+    return list(dict.fromkeys(ids))
+
+
 def _admin_activity():
     history = get_container("AnalysisHistory")
     interviews = get_container("InterviewSessions")
@@ -119,81 +139,103 @@ def _admin_activity():
 
 def _admin_set_ban(admin_user_id: str, target_user_id: str, banned: bool, reason: str):
     users = get_container("Users")
-    target = users.read_item(item=target_user_id, partition_key=target_user_id)
-    target["is_banned"] = bool(banned)
-    target["banned_reason"] = reason if banned else ""
-    target["banned_at"] = datetime.utcnow().isoformat() if banned else None
-    users.upsert_item(target)
+    target_ids = _resolve_target_user_ids(target_user_id)
+    for uid in target_ids:
+        target = users.read_item(item=uid, partition_key=uid)
+        target["is_banned"] = bool(banned)
+        target["banned_reason"] = reason if banned else ""
+        target["banned_at"] = datetime.utcnow().isoformat() if banned else None
+        users.upsert_item(target)
 
     log_admin_audit(
         action="ban-user",
         admin_user_id=admin_user_id,
-        payload={"target_user_id": target_user_id, "banned": bool(banned), "reason": reason},
+        payload={"target_user_id": target_user_id, "affected_user_ids": target_ids, "banned": bool(banned), "reason": reason},
     )
 
 
 def _admin_add_credits(admin_user_id: str, target_user_id: str, amount: int):
     users = get_container("Users")
-    target = users.read_item(item=target_user_id, partition_key=target_user_id)
-    if target.get("role") == "admin":
-        return {
-            "target_user_id": target_user_id,
-            "credits_remaining": target.get("credits_remaining", 999999),
-            "skipped": True,
-            "reason": "Target is admin",
-        }
-
     safe_amount = max(0, int(amount or 0))
-    target["credits_remaining"] = int(target.get("credits_remaining", 0)) + safe_amount
-    users.upsert_item(target)
+    target_ids = _resolve_target_user_ids(target_user_id)
+    latest = None
+
+    for uid in target_ids:
+        target = users.read_item(item=uid, partition_key=uid)
+        if target.get("role") == "admin":
+            latest = {
+                "target_user_id": uid,
+                "credits_remaining": target.get("credits_remaining", 999999),
+                "skipped": True,
+                "reason": "Target is admin",
+            }
+            continue
+        target["credits_remaining"] = int(target.get("credits_remaining", 0)) + safe_amount
+        users.upsert_item(target)
+        latest = {
+            "target_user_id": uid,
+            "credits_remaining": target["credits_remaining"],
+            "added": safe_amount,
+        }
 
     log_admin_audit(
         action="add-credits",
         admin_user_id=admin_user_id,
         payload={
             "target_user_id": target_user_id,
+            "affected_user_ids": target_ids,
             "amount": safe_amount,
-            "result_credits": target["credits_remaining"],
+            "result_credits": (latest or {}).get("credits_remaining"),
         },
     )
 
-    return {
+    return latest or {
         "target_user_id": target_user_id,
-        "credits_remaining": target["credits_remaining"],
-        "added": safe_amount,
+        "credits_remaining": 0,
+        "added": 0,
     }
 
 
 def _admin_set_testing_plan(admin_user_id: str, target_user_id: str, testing_plan: str):
     users = get_container("Users")
-    target = users.read_item(item=target_user_id, partition_key=target_user_id)
     normalized = (testing_plan or "").strip().lower()
     if normalized not in {"free", "basic", "pro", "admin", "off", ""}:
         raise ValueError("testingPlan must be one of: free, basic, pro, admin, off")
+    target_ids = _resolve_target_user_ids(target_user_id)
+    final_target = None
+    effective_plan = "free"
 
-    target["testing_plan_override"] = None if normalized in {"off", ""} else normalized
-    effective_plan = get_effective_plan(target)
-    if effective_plan == "admin":
-        target["credits_remaining"] = 999999
-    else:
-        target["credits_remaining"] = min(int(target.get("credits_remaining", 0)), get_plan_credit_cap(effective_plan))
-    users.upsert_item(target)
+    for uid in target_ids:
+        target = users.read_item(item=uid, partition_key=uid)
+        target["testing_plan_override"] = None if normalized in {"off", ""} else normalized
+        effective_plan = get_effective_plan(target)
+        if effective_plan == "admin":
+            target["credits_remaining"] = 999999
+        else:
+            target["credits_remaining"] = min(int(target.get("credits_remaining", 0)), get_plan_credit_cap(effective_plan))
+        users.upsert_item(target)
+        if uid == target_user_id:
+            final_target = target
+
+    if final_target is None and target_ids:
+        final_target = users.read_item(item=target_ids[0], partition_key=target_ids[0])
 
     log_admin_audit(
         action="set-testing-plan",
         admin_user_id=admin_user_id,
         payload={
             "target_user_id": target_user_id,
-            "testing_plan_override": target.get("testing_plan_override"),
+            "affected_user_ids": target_ids,
+            "testing_plan_override": (final_target or {}).get("testing_plan_override"),
             "effective_plan": effective_plan,
         },
     )
 
     return {
         "target_user_id": target_user_id,
-        "testing_plan_override": target.get("testing_plan_override"),
+        "testing_plan_override": (final_target or {}).get("testing_plan_override"),
         "effective_plan": effective_plan,
-        "credits_remaining": target.get("credits_remaining"),
+        "credits_remaining": (final_target or {}).get("credits_remaining"),
     }
 
 
@@ -202,27 +244,35 @@ def _admin_set_user_plan(admin_user_id: str, target_user_id: str, plan: str, tri
     if normalized not in {"free", "basic", "pro"}:
         raise ValueError("plan must be one of: free, basic, pro")
 
-    users = get_container("Users")
-    target = users.read_item(item=target_user_id, partition_key=target_user_id)
-
-    if target.get("role") == "admin":
-        raise ValueError("Cannot change plan of an admin user")
-
     expires_at = None
     if normalized in {"basic", "pro"}:
         expires_at = (datetime.now(timezone.utc) + timedelta(days=max(1, int(trial_days)))).isoformat()
 
-    target["plan"] = normalized
-    target["plan_expires_at"] = expires_at
-    target["testing_plan_override"] = None
-    target["credits_remaining"] = get_plan_credit_cap(normalized)
-    users.upsert_item(target)
+    users = get_container("Users")
+    target_ids = _resolve_target_user_ids(target_user_id)
+    final_target = None
+
+    for uid in target_ids:
+        target = users.read_item(item=uid, partition_key=uid)
+        if target.get("role") == "admin":
+            continue
+        target["plan"] = normalized
+        target["plan_expires_at"] = expires_at
+        target["testing_plan_override"] = None
+        target["credits_remaining"] = get_plan_credit_cap(normalized)
+        users.upsert_item(target)
+        if uid == target_user_id:
+            final_target = target
+
+    if final_target is None and target_ids:
+        final_target = users.read_item(item=target_ids[0], partition_key=target_ids[0])
 
     log_admin_audit(
         action="set-user-plan",
         admin_user_id=admin_user_id,
         payload={
             "target_user_id": target_user_id,
+            "affected_user_ids": target_ids,
             "plan": normalized,
             "plan_expires_at": expires_at,
         },
@@ -232,7 +282,7 @@ def _admin_set_user_plan(admin_user_id: str, target_user_id: str, plan: str, tri
         "target_user_id": target_user_id,
         "plan": normalized,
         "plan_expires_at": expires_at,
-        "credits_remaining": target.get("credits_remaining", 0),
+        "credits_remaining": (final_target or {}).get("credits_remaining", 0),
     }
 
 
