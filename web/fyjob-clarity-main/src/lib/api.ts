@@ -33,9 +33,18 @@ const requestAcrossBases = async (
   for (const base of baseCandidates) {
     try {
       const response = await fetch(`${base}${endpoint}`, requestInit);
+      const contentType = response.headers.get('content-type') || '';
+      const expectsJson = endpoint.startsWith('/api/');
 
       // If this base doesn't expose the endpoint, try the next candidate.
       if (response.status === 404) {
+        lastResponse = response;
+        continue;
+      }
+
+      // If a base returns HTML (or any non-JSON) for API endpoint,
+      // it's likely the wrong host. Continue trying other candidates.
+      if (expectsJson && response.ok && !contentType.toLowerCase().includes('application/json')) {
         lastResponse = response;
         continue;
       }
@@ -161,7 +170,14 @@ export const fetchApi = async <T>(
     throw new Error(errorData?.error || `API Error: ${response.status}`);
   }
 
-  return response.json();
+  const safeClone = response.clone();
+  try {
+    return await response.json();
+  } catch {
+    const raw = (await safeClone.text()).trim();
+    const preview = raw.slice(0, 140);
+    throw new Error(preview ? `Invalid API JSON response: ${preview}` : 'Invalid API JSON response');
+  }
 };
 
 // ═══════════════════════════════════════════════════
