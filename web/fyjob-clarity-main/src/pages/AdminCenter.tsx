@@ -4,6 +4,7 @@ import {
   adminAddUserCredits,
   adminResetNonAdminUsers,
   adminSetTestingPlan,
+  adminSetUserPlan,
   adminSetUserBan,
   getAdminActivity,
   getAdminOverview,
@@ -28,6 +29,7 @@ const AdminCenter = () => {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [search, setSearch] = useState("");
   const [creditInput, setCreditInput] = useState<Record<string, number>>({});
+  const [planInput, setPlanInput] = useState<Record<string, "free" | "basic" | "pro">>({});
   const [testingPlan, setTestingPlan] = useState<"free" | "basic" | "pro" | "admin" | "off">("off");
   const [resetTrialDays, setResetTrialDays] = useState<number>(7);
   const [resetConfirmText, setResetConfirmText] = useState("");
@@ -114,6 +116,17 @@ const AdminCenter = () => {
       },
       `+${amount} token ditambahkan ke ${user.email}`,
       "Failed adding credits",
+    );
+  };
+
+  const handleSetUserPlan = async (user: AdminUserRow) => {
+    const selectedPlan = planInput[user.id] || ((user.plan === "basic" || user.plan === "pro") ? user.plan : "free");
+    await runMutation(
+      async () => {
+        await adminSetUserPlan(user.id, selectedPlan);
+      },
+      `Plan ${user.email} diubah ke ${selectedPlan}`,
+      "Failed to update user plan",
     );
   };
 
@@ -281,6 +294,7 @@ const AdminCenter = () => {
                     <th className="py-2 pr-2">Role</th>
                     <th className="py-2 pr-2">Plan</th>
                     <th className="py-2 pr-2">Credits</th>
+                    <th className="py-2 pr-2">Set Plan</th>
                     <th className="py-2 pr-2">Status</th>
                     <th className="py-2 pr-2">Token</th>
                     <th className="py-2">Actions</th>
@@ -296,6 +310,27 @@ const AdminCenter = () => {
                       <td className="py-2 pr-2">{u.role}</td>
                       <td className="py-2 pr-2">{u.testing_plan_override ? `${u.plan || "free"} -> ${u.testing_plan_override}` : (u.plan || "free")}</td>
                       <td className="py-2 pr-2">{u.role === "admin" ? "∞" : (u.credits_remaining ?? 0)}</td>
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={planInput[u.id] || ((u.plan === "basic" || u.plan === "pro") ? u.plan : "free")}
+                            onChange={(e) => setPlanInput((prev) => ({ ...prev, [u.id]: e.target.value as "free" | "basic" | "pro" }))}
+                            disabled={u.role === "admin"}
+                            className="rounded-md border border-border bg-card px-2 py-1"
+                          >
+                            <option value="free">Free</option>
+                            <option value="basic">Basic</option>
+                            <option value="pro">Pro</option>
+                          </select>
+                          <button
+                            onClick={() => handleSetUserPlan(u)}
+                            disabled={u.role === "admin"}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border hover:bg-card/60 disabled:opacity-50"
+                          >
+                            Update
+                          </button>
+                        </div>
+                      </td>
                       <td className="py-2 pr-2">{u.is_banned ? <span className="text-red-400">Banned</span> : <span className="text-emerald-400">Active</span>}</td>
                       <td className="py-2 pr-2">
                         <div className="flex items-center gap-2">

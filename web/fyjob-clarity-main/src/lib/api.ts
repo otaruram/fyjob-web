@@ -469,20 +469,20 @@ export const ttsInterviewLite = (text: string, language: InterviewLanguage) =>
     language,
   });
 
-/** GET /api/user-stats?action=admin-overview */
+/** GET /api/admincenter?action=overview */
 export const getAdminOverview = () =>
-  fetchApi<AdminOverview>('/api/user-stats?action=admin-overview', 'GET');
+  fetchApi<AdminOverview>('/api/admincenter?action=overview', 'GET');
 
-/** GET /api/user-stats?action=admin-users */
+/** GET /api/admincenter?action=users */
 export const getAdminUsers = (search = '', limit = 30) =>
   fetchApi<{ users: AdminUserRow[] }>(
-    `/api/user-stats?action=admin-users&search=${encodeURIComponent(search)}&limit=${limit}`,
+    `/api/admincenter?action=users&search=${encodeURIComponent(search)}&limit=${limit}`,
     'GET'
   );
 
-/** GET /api/user-stats?action=admin-activity */
+/** GET /api/admincenter?action=activity */
 export const getAdminActivity = () =>
-  fetchApi<AdminActivitySummary>('/api/user-stats?action=admin-activity', 'GET');
+  fetchApi<AdminActivitySummary>('/api/admincenter?action=activity', 'GET');
 
 /** POST /api/user-stats action=ban-user */
 export const adminSetUserBan = (targetUserId: string, banned: boolean, reason?: string) =>
@@ -511,6 +511,22 @@ export const adminSetTestingPlan = (testingPlan: 'free' | 'basic' | 'pro' | 'adm
     action: 'set-testing-plan',
     targetUserId,
     testingPlan,
+  });
+
+export interface AdminSetUserPlanResult {
+  target_user_id: string;
+  plan: 'free' | 'basic' | 'pro';
+  plan_expires_at: string | null;
+  credits_remaining: number;
+}
+
+/** POST /api/admincenter action=set-user-plan */
+export const adminSetUserPlan = (targetUserId: string, plan: 'free' | 'basic' | 'pro', trialDays = 30) =>
+  fetchApi<AdminSetUserPlanResult>('/api/admincenter', 'POST', {
+    action: 'set-user-plan',
+    targetUserId,
+    plan,
+    trialDays,
   });
 
 /** POST /api/user-stats action=reset-non-admin-users */
