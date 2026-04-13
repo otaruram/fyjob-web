@@ -164,6 +164,78 @@ def _admin_add_credits(admin_user_id: str, target_user_id: str, amount: int):
     }
 
 
+def _admin_set_testing_plan(admin_user_id: str, target_user_id: str, testing_plan: str):
+    users = get_container("Users")
+    target = users.read_item(item=target_user_id, partition_key=target_user_id)
+    normalized = (testing_plan or "").strip().lower()
+    if normalized not in {"free", "basic", "pro", "admin", "off", ""}:
+        raise ValueError("testingPlan must be one of: free, basic, pro, admin, off")
+
+    target["testing_plan_override"] = None if normalized in {"off", ""} else normalized
+    effective_plan = get_effective_plan(target)
+    if effective_plan == "admin":
+        target["credits_remaining"] = 999999
+    else:
+        target["credits_remaining"] = min(int(target.get("credits_remaining", 0)), get_plan_credit_cap(effective_plan))
+    users.upsert_item(target)
+
+    log_admin_audit(
+        action="set-testing-plan",
+        admin_user_id=admin_user_id,
+        payload={
+            "target_user_id": target_user_id,
+            "testing_plan_override": target.get("testing_plan_override"),
+            "effective_plan": effective_plan,
+        },
+    )
+
+    return {
+        "target_user_id": target_user_id,
+        "testing_plan_override": target.get("testing_plan_override"),
+        "effective_plan": effective_plan,
+        "credits_remaining": target.get("credits_remaining"),
+    }
+
+
+def _admin_set_user_plan(admin_user_id: str, target_user_id: str, plan: str, trial_days: int = 30):
+    normalized = (plan or "").strip().lower()
+    if normalized not in {"free", "basic", "pro"}:
+        raise ValueError("plan must be one of: free, basic, pro")
+
+    users = get_container("Users")
+    target = users.read_item(item=target_user_id, partition_key=target_user_id)
+
+    if target.get("role") == "admin":
+        raise ValueError("Cannot change plan of an admin user")
+
+    expires_at = None
+    if normalized in {"basic", "pro"}:
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=max(1, int(trial_days)))).isoformat()
+
+    target["plan"] = normalized
+    target["plan_expires_at"] = expires_at
+    target["testing_plan_override"] = None
+    target["credits_remaining"] = get_plan_credit_cap(normalized)
+    users.upsert_item(target)
+
+    log_admin_audit(
+        action="set-user-plan",
+        admin_user_id=admin_user_id,
+        payload={
+            "target_user_id": target_user_id,
+            "plan": normalized,
+            "plan_expires_at": expires_at,
+        },
+    )
+
+    return {
+        "target_user_id": target_user_id,
+        "plan": normalized,
+        "plan_expires_at": expires_at,
+        "credits_remaining": target.get("credits_remaining", 0),
+    }
+
+
 def _admin_reset_non_admin_users(admin_user_id: str, trial_days: int = 7):
     users = get_container("Users")
     now = datetime.now(timezone.utc)
@@ -243,7 +315,7 @@ def _handle_admin_get_action(req: func.HttpRequest, user: dict):
 def _handle_admin_post_action(body: dict, user: dict, user_id: str):
     action = str(body.get("action") or "").strip().lower()
 
-    if action in {"ban-user", "add-credits"}:
+    if action in {"ban-user", "add-credits", "set-testing-plan", "set-user-plan"}:
         if not _is_admin_user(user):
             return error_response("Admin access required", 403)
 
@@ -258,13 +330,28 @@ def _handle_admin_post_action(body: dict, user: dict, user_id: str):
             _admin_set_ban(user_id, target_user_id, banned, reason)
             return success_response({"ok": True, "targetUserId": target_user_id, "banned": banned})
 
+        if action == "add-credits":
+            target_user_id = str(body.get("targetUserId") or "").strip()
+            amount = int(body.get("amount") or 0)
+            if not target_user_id:
+                return error_response("targetUserId is required", 400)
+            if amount <= 0:
+                return error_response("amount must be > 0", 400)
+            return success_response(_admin_add_credits(user_id, target_user_id, amount))
+
+        if action == "set-testing-plan":
+            target_user_id = str(body.get("targetUserId") or user_id).strip()
+            testing_plan = str(body.get("testingPlan") or "off").strip().lower()
+            return success_response(_admin_set_testing_plan(user_id, target_user_id, testing_plan))
+
         target_user_id = str(body.get("targetUserId") or "").strip()
-        amount = int(body.get("amount") or 0)
+        plan = str(body.get("plan") or "").strip().lower()
+        trial_days = int(body.get("trialDays") or 30)
         if not target_user_id:
             return error_response("targetUserId is required", 400)
-        if amount <= 0:
-            return error_response("amount must be > 0", 400)
-        return success_response(_admin_add_credits(user_id, target_user_id, amount))
+        if not plan:
+            return error_response("plan is required (free, basic, pro)", 400)
+        return success_response(_admin_set_user_plan(user_id, target_user_id, plan, trial_days))
 
     if action == "reset-non-admin-users":
         if not _is_admin_user(user):

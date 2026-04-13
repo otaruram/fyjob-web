@@ -499,20 +499,20 @@ export const ttsInterviewLite = (text: string, language: InterviewLanguage) =>
     language,
   });
 
-/** GET /api/admincenter?action=overview */
+/** GET /api/user-stats?action=admin-overview */
 export const getAdminOverview = () =>
-  fetchApi<AdminOverview>('/api/admincenter?action=overview', 'GET');
+  fetchApi<AdminOverview>('/api/user-stats?action=admin-overview', 'GET');
 
-/** GET /api/admincenter?action=users */
+/** GET /api/user-stats?action=admin-users */
 export const getAdminUsers = (search = '', limit = 30) =>
   fetchApi<{ users: AdminUserRow[] }>(
-    `/api/admincenter?action=users&search=${encodeURIComponent(search)}&limit=${limit}`,
+    `/api/user-stats?action=admin-users&search=${encodeURIComponent(search)}&limit=${limit}`,
     'GET'
   );
 
-/** GET /api/admincenter?action=activity */
+/** GET /api/user-stats?action=admin-activity */
 export const getAdminActivity = () =>
-  fetchApi<AdminActivitySummary>('/api/admincenter?action=activity', 'GET');
+  fetchApi<AdminActivitySummary>('/api/user-stats?action=admin-activity', 'GET');
 
 /** POST /api/user-stats action=ban-user */
 export const adminSetUserBan = (targetUserId: string, banned: boolean, reason?: string) =>
@@ -535,9 +535,9 @@ export const adminAddUserCredits = (targetUserId: string, amount: number) =>
     }
   );
 
-/** POST /api/admincenter action=set-testing-plan */
+/** POST /api/user-stats action=set-testing-plan */
 export const adminSetTestingPlan = (testingPlan: 'free' | 'basic' | 'pro' | 'admin' | 'off', targetUserId?: string) =>
-  fetchApi<AdminTestingPlanResult>('/api/admincenter', 'POST', {
+  fetchApi<AdminTestingPlanResult>('/api/user-stats', 'POST', {
     action: 'set-testing-plan',
     targetUserId,
     testingPlan,
@@ -550,9 +550,9 @@ export interface AdminSetUserPlanResult {
   credits_remaining: number;
 }
 
-/** POST /api/admincenter action=set-user-plan */
+/** POST /api/user-stats action=set-user-plan */
 export const adminSetUserPlan = (targetUserId: string, plan: 'free' | 'basic' | 'pro', trialDays = 30) =>
-  fetchApi<AdminSetUserPlanResult>('/api/admincenter', 'POST', {
+  fetchApi<AdminSetUserPlanResult>('/api/user-stats', 'POST', {
     action: 'set-user-plan',
     targetUserId,
     plan,
