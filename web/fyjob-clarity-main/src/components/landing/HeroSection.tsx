@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Terminal } from "lucide-react";
+import { ArrowRight, ExternalLink, Globe, Lock, Terminal } from "lucide-react";
 import { motion } from "framer-motion";
 import { FyjobLogo } from "@/components/FyjobLogo";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export const HeroSection = ({ t }: { t: any }) => {
   return (
@@ -53,9 +54,61 @@ export const HeroSection = ({ t }: { t: any }) => {
                <Terminal className="h-4 w-4" /> {t('hero_cta')}
                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
             </Link>
-          <div className="flex items-center justify-center w-full sm:w-auto border border-border bg-card/70 backdrop-blur px-5 sm:px-6 py-3.5 sm:py-4 rounded-xl">
-              <FyjobLogo compact iconClassName="h-4 w-4" wordmarkClassName="text-sm font-bold tracking-tight" />
-            </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center justify-center w-full sm:w-auto border border-border bg-card/70 hover:bg-card/90 backdrop-blur px-5 sm:px-6 py-3.5 sm:py-4 rounded-xl transition-colors"
+                aria-label="Open FYJOB extension browser options"
+              >
+                <FyjobLogo compact iconClassName="h-4 w-4" wordmarkClassName="text-sm font-bold tracking-tight" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[min(92vw,340px)] border-border bg-card/95 backdrop-blur-xl p-3 sm:p-4">
+              <div className="mb-3">
+                <p className="text-sm font-semibold text-foreground">Install FYJOB Scanner</p>
+                <p className="text-xs text-muted-foreground">Choose your browser. Edge and Chrome are locked for now.</p>
+              </div>
+
+              <div className="space-y-2">
+                <a
+                  href="https://addons.mozilla.org/en-US/firefox/addon/fyjob/?utm_source=addons.mozilla.org&utm_medium=referral&utm_content=search"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-left transition-colors hover:bg-emerald-500/15"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Globe className="h-4 w-4 text-emerald-400" /> Firefox
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-300">
+                    Live <ExternalLink className="h-3.5 w-3.5" />
+                  </span>
+                </a>
+
+                <button
+                  type="button"
+                  disabled
+                  className="w-full flex items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5 text-left cursor-not-allowed opacity-70"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Lock className="h-4 w-4 text-muted-foreground" /> Edge
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">TBA</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled
+                  className="w-full flex items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5 text-left cursor-not-allowed opacity-70"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Lock className="h-4 w-4 text-muted-foreground" /> Chrome
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">TBA</span>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
          </motion.div>
 
         <motion.div
