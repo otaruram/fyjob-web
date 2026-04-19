@@ -1,4 +1,4 @@
-import { Zap, BookOpen, FileText, Swords, MessageSquareWarning, CircleCheck } from "lucide-react";
+import { Zap, BookOpen, FileText, Swords, MessageSquareWarning, Mic } from "lucide-react";
 import { motion } from "framer-motion";
 
 export const Features = ({ t }: { t: any }) => {
@@ -28,7 +28,7 @@ export const Features = ({ t }: { t: any }) => {
     { title: t('feat_study_title'), desc: t('feat_study_desc'), icon: BookOpen },
     { title: t('feat_quiz_title'), desc: t('feat_quiz_desc'), icon: Swords },
     { title: t('feat_cv_title'), desc: t('feat_cv_desc'), icon: FileText },
-    { title: t('feat_free_title'), desc: t('feat_free_desc'), icon: CircleCheck },
+    { title: t('feat_free_title'), desc: t('feat_free_desc'), icon: Mic },
   ];
 
   return (

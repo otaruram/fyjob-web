@@ -34,8 +34,8 @@ const dictionary = {
     feat_quiz_desc: "5 multiple-choice and 5 essay questions at FAANG-level difficulty to test your readiness.",
     feat_cv_title: "ATS CV Generator",
     feat_cv_desc: "God-tier resume builder guaranteed to parse correctly through enterprise applicant tracking systems.",
-    feat_free_title: "Free Access",
-    feat_free_desc: "No subscription wall for core tools. Analyze jobs, train skills, and improve your profile for free.",
+    feat_free_title: "AI Interview",
+    feat_free_desc: "Practice realistic AI interview sessions with plan-based access, sharper prompts, and targeted follow-up questions.",
     
     // Auth
     auth_title_login: "Sign In to FYJOB",
@@ -134,8 +134,8 @@ const dictionary = {
     feat_quiz_desc: "Simulasi sadis berisi soal pilihan ganda dan esai tingkat FAANG untuk menguji kesiapan mental Anda.",
     feat_cv_title: "Generator CV ATS",
     feat_cv_desc: "Mesin pencetak CV tingkat dewa yang dijamin terdeteksi sempurna oleh sistem ATS perusahaan korporat.",
-    feat_free_title: "Akses Gratis",
-    feat_free_desc: "Tanpa paywall untuk fitur inti. Analisis loker, latihan skill, dan tingkatkan profil Anda secara gratis.",
+    feat_free_title: "AI Interview",
+    feat_free_desc: "Latih simulasi wawancara AI yang terasa realistis dengan akses sesuai plan, prompt lebih tajam, dan pertanyaan lanjutan yang terarah.",
     
     // Auth
     auth_title_login: "Masuk Web Dasbor",

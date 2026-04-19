@@ -25,6 +25,20 @@ const getScoreColor = (score: number) => {
   return "text-warning";
 };
 
+const getPlanDailyCreditRegen = (plan?: UserStats['plan']) => {
+  switch (plan) {
+    case 'basic':
+      return 2;
+    case 'pro':
+      return 3;
+    case 'admin':
+      return 0;
+    case 'free':
+    default:
+      return 1;
+  }
+};
+
 const Dashboard = () => {
   const { t } = useTranslation();
   const { user, session } = useAuth();
@@ -71,6 +85,7 @@ const Dashboard = () => {
 
   const topJob = stats?.recent_analyses?.[0];
   const isAdmin = stats?.role === 'admin';
+  const dailyCreditRegen = getPlanDailyCreditRegen(stats?.plan);
 
   const metrics = [
     { label: "Analyses Done", value: stats?.total_analyses || 0, icon: BarChart3, highlight: false },
@@ -123,10 +138,10 @@ const Dashboard = () => {
         </div>
         
         {/* Next Regen Timer Info */}
-        {stats?.next_regen_time && (
+        {stats?.next_regen_time && !isAdmin && (
           <div className="flex items-center gap-2 flex-wrap text-[11px] sm:text-xs text-slate-700 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-300 shadow-sm max-w-full">
             <Clock className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-slate-500">Next credit regen (+1): </span>
+            <span className="text-slate-500">Next credit regen (+{dailyCreditRegen}): </span>
             <span className="font-mono text-primary font-medium">
               {new Date(stats.next_regen_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </span>
