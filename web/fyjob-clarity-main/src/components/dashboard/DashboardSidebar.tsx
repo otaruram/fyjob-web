@@ -1,19 +1,17 @@
 import { useEffect, useState } from "react";
-import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, LogOut, Mic, Crown, Shield, Sparkles } from "lucide-react";
+import { LayoutDashboard, FileText, History, BookOpen, Swords, Settings, Mic, Crown, Shield, Sparkles } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAnalysisHistory, getUserStats } from "@/lib/api";
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 
 const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || "okitr52@gmail.com").trim().toLowerCase().replace(/\s+/g, "");
 
 const DashboardSidebar = () => {
   const { state } = useSidebar();
   const { t } = useTranslation();
-  const { signOut, user } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const collapsed = state === "collapsed";
   const isAllowedAdminEmail = (user?.email || "").trim().toLowerCase().replace(/\s+/g, "") === ADMIN_EMAIL;
   const [hasAnalysis, setHasAnalysis] = useState(false);
@@ -87,11 +85,6 @@ const DashboardSidebar = () => {
       ],
     },
   ];
-
-  const handleLogout = async () => {
-    await signOut();
-    navigate("/");
-  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-background">
@@ -205,14 +198,6 @@ const DashboardSidebar = () => {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border/70 p-3">
-        <SidebarMenuButton asChild>
-          <button onClick={handleLogout} className="flex items-center w-full rounded-lg border border-transparent px-2 py-2 text-muted-foreground transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-400">
-            <LogOut className="h-4 w-4 mr-3 shrink-0" />
-            {!collapsed && <span className="text-sm">{t('side_logout')}</span>}
-          </button>
-        </SidebarMenuButton>
-      </SidebarFooter>
     </Sidebar>
   );
 };

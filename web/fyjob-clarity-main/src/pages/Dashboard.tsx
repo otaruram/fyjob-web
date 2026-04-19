@@ -192,10 +192,10 @@ const Dashboard = () => {
                 <h3 className="text-lg sm:text-xl font-bold text-foreground">{topJob.jobTitle}</h3>
                 <p className="text-muted-foreground text-sm mt-1 mb-4">{topJob.portal}</p>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant={topJob.has_learning_path ? "outline" : "hero"} size="sm" onClick={() => navigate('/study-room')}>
+                  <Button variant={topJob.has_learning_path ? "outline" : "hero"} size="sm" onClick={() => navigate('/dashboard/study')}>
                     {topJob.has_learning_path ? 'View Study Path' : 'Generate Study Path'}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => navigate('/killer-quiz')}>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/dashboard/quiz')}>
                     {topJob.has_quiz ? 'Take Quiz' : 'Generate Quiz'}
                   </Button>
                 </div>

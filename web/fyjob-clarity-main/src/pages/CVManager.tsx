@@ -7,6 +7,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   FileText,
   Upload,
   CheckCircle2,
@@ -75,6 +85,8 @@ const CVManager = () => {
   const [builderForm, setBuilderForm] = useState<BuilderForm>(initialBuilderForm);
   const [sectionOrder, setSectionOrder] = useState<BuilderSectionKey[]>(defaultSectionOrder);
   const [isPublishingBuilder, setIsPublishingBuilder] = useState(false);
+  const [isDeletingCV, setIsDeletingCV] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [builderMessage, setBuilderMessage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -269,17 +281,17 @@ const CVManager = () => {
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete your active CV? Quick Match will not work until you upload a new one.")) return;
-    
     try {
-      setIsLoading(true);
+      setIsDeletingCV(true);
       await deleteCV();
       setCvData(null);
       // Clear cache
       try { sessionStorage.removeItem(CV_CACHE_KEY); } catch {}
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to delete CV");
-      setIsLoading(false);
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setIsDeletingCV(false);
     }
   };
 
@@ -619,7 +631,13 @@ const CVManager = () => {
                     </div>
                   </div>
                   <div className="mt-5 pt-4 border-t border-border flex gap-2">
-                    <Button variant="destructive" size="sm" className="w-full bg-destructive/10 text-destructive hover:bg-destructive hover:text-white border-destructive/20" onClick={handleDelete}>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="w-full bg-destructive/10 text-destructive hover:bg-destructive hover:text-white border-destructive/20"
+                      onClick={() => setIsDeleteDialogOpen(true)}
+                      disabled={isDeletingCV}
+                    >
                       <Trash2 className="w-4 h-4 mr-2" /> Delete CV
                     </Button>
                   </div>
@@ -785,6 +803,30 @@ const CVManager = () => {
               </motion.div>
             )}
           </AnimatePresence>
+
+          <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent className="border-border bg-card/95 backdrop-blur-xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete active CV?</AlertDialogTitle>
+                <AlertDialogDescription className="text-sm leading-relaxed">
+                  Your current CV will be removed and Quick Match will pause until you upload a new one.
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeletingCV}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={isDeletingCV}
+                  onClick={() => {
+                    void handleDelete();
+                  }}
+                >
+                  {isDeletingCV ? "Deleting..." : "Delete CV"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
       </Tabs>
     </div>

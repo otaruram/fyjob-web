@@ -2,14 +2,13 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import DashboardSidebar from "./DashboardSidebar";
 import { UjangChatPanel } from "./UjangChatPanel";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut } from "lucide-react";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
 
   return (
   <SidebarProvider>
@@ -28,14 +27,6 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                 {user.email}
               </span>
             )}
-            {/* Logout button */}
-            <button
-              onClick={signOut}
-              className="text-muted-foreground hover:text-red-400 transition-colors p-1.5 rounded-md hover:bg-red-500/10"
-              title="Sign Out"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
           </div>
         </header>
         <main className="flex-1 p-4 sm:p-6 pb-24 sm:pb-6 overflow-y-auto">{children}</main>

@@ -1,9 +1,12 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import { User, Bell, Shield, ArrowRight, Headset, Linkedin, Mail, MessageCircle, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { User, Bell, Shield, ArrowRight, Headset, Linkedin, Mail, MessageCircle, ExternalLink, Loader2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 const SUPPORT_EMAIL = "okitr52@gmail.com";
 const SUPPORT_LINKEDIN = "https://www.linkedin.com/in/otaruram/";
@@ -43,6 +46,30 @@ const supportItems = [
 const Settings = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || "");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setIsSavingProfile(true);
+
+    try {
+      const nextName = fullName.trim();
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          ...user.user_metadata,
+          full_name: nextName,
+        },
+      });
+
+      if (error) throw error;
+      toast.success("Profile updated");
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to save profile");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -90,7 +117,12 @@ const Settings = () => {
                      <div className="space-y-4">
                         <div>
                           <label className="text-sm font-medium text-muted-foreground block mb-1.5">Full Name</label>
-                          <input type="text" defaultValue={user?.user_metadata?.full_name || ''} className="w-full bg-card border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 transition-colors" />
+                          <input
+                            type="text"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            className="w-full bg-card border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+                          />
                         </div>
                         <div>
                           <label className="text-sm font-medium text-muted-foreground block mb-1.5">Email Address</label>
@@ -101,8 +133,14 @@ const Settings = () => {
                           <label className="text-sm font-medium text-muted-foreground block mb-1.5">Auth Provider</label>
                           <input type="text" defaultValue={user?.app_metadata?.provider || 'google'} className="w-full bg-card border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 transition-colors capitalize" disabled />
                         </div>
-                        <button className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium px-5 sm:px-6 py-2.5 rounded-lg transition-colors shadow-glow mt-2 w-full sm:w-auto">
-                           Save Changes
+                        <button
+                          type="button"
+                          onClick={handleSaveProfile}
+                          disabled={isSavingProfile}
+                          className="bg-primary hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed text-primary-foreground text-sm font-medium px-5 sm:px-6 py-2.5 rounded-lg transition-all shadow-glow mt-2 w-full sm:w-auto inline-flex items-center justify-center gap-2"
+                        >
+                          {isSavingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                          {isSavingProfile ? "Saving..." : "Save Changes"}
                         </button>
                      </div>
                   </div>
