@@ -6,10 +6,6 @@ import { useTranslation } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
-const SUPPORT_EMAIL = "okitr52@gmail.com";
-const SUPPORT_WA_URL =
-  "https://wa.me/6285797968246?text=Halo%20FYJOB%20Support%2C%20saya%20butuh%20bantuan%20terkait%20akun%2Ffitur.%20Detail%20kendala%3A%20";
-
 const Auth = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -97,11 +93,6 @@ const Auth = () => {
               <Link to="/privacy" className="underline underline-offset-4 hover:text-foreground transition-colors">
                 Privacy Policy
               </Link>
-            </p>
-            <p>
-              Support: <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4 hover:text-foreground transition-colors">{SUPPORT_EMAIL}</a>
-              {" · "}
-              <a href={SUPPORT_WA_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4 hover:text-foreground transition-colors">WhatsApp</a>
             </p>
           </div>
         </div>
