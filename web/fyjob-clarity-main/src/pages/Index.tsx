@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
 import { FyjobLogo } from "@/components/FyjobLogo";
@@ -15,6 +16,26 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
+      <Helmet>
+        <title>FYJOB | Analisis CV, Simulasi Interview AI & Persiapan Kerja</title>
+        <meta name="description" content="FYJOB bantu kamu lolos interview dan dapat kerja lebih cepat. Analisis CV otomatis, simulasi interview AI, kuis karier, dan rencana belajar personal. Gratis untuk job seeker Indonesia." />
+        <link rel="canonical" href="https://fyjob.vercel.app/" />
+        <script type="application/ld+json">{JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          "name": "FYJOB",
+          "url": "https://fyjob.vercel.app/",
+          "description": "Platform analisis CV, simulasi interview AI, dan persiapan karier untuk job seeker Indonesia.",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "IDR" },
+          "inLanguage": "id",
+          "audience": {
+            "@type": "Audience",
+            "geographicArea": { "@type": "Country", "name": "Indonesia" }
+          }
+        })}</script>
+      </Helmet>
       {/* Nav */}
       <nav className="fixed top-0 inset-x-0 z-50 glass-strong">
         <div className="container mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
