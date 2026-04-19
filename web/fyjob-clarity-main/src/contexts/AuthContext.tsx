@@ -44,7 +44,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         EXT_AUTH_BRIDGE_KEY,
         JSON.stringify({
           access_token: currentSession.access_token,
-          refresh_token: currentSession.refresh_token || '',
           expires_at: currentSession.expires_at || null,
           email: currentSession.user?.email || '',
           ts: Date.now(),
