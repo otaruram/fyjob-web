@@ -1,8 +1,12 @@
+import type { ReactNode } from "react";
+
 type FyjobLogoProps = {
   className?: string;
   iconClassName?: string;
   wordmarkClassName?: string;
   compact?: boolean;
+  label?: ReactNode;
+  subtitle?: ReactNode | null;
 };
 
 export const FyjobLogo = ({
@@ -10,6 +14,8 @@ export const FyjobLogo = ({
   iconClassName = "h-6 w-6",
   wordmarkClassName = "text-xl font-bold tracking-tight",
   compact = false,
+  label,
+  subtitle,
 }: FyjobLogoProps) => {
   return (
     <div className={`flex items-center gap-3 ${className}`.trim()}>
@@ -32,9 +38,9 @@ export const FyjobLogo = ({
       </span>
       <div className="flex flex-col leading-none">
         <span className={wordmarkClassName}>
-          FY<span className="text-primary font-black">JOB</span>
+          {label ?? <><span>FY</span><span className="text-primary font-black">JOB</span></>}
         </span>
-        {!compact ? <span className="text-[10px] uppercase tracking-[0.35em] text-muted-foreground">Career Intelligence</span> : null}
+        {!compact ? <span className="text-[10px] uppercase tracking-[0.35em] text-muted-foreground">{subtitle ?? "Career Intelligence"}</span> : null}
       </div>
     </div>
   );

@@ -1,8 +1,44 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import { User, Bell, Shield, ArrowRight } from "lucide-react";
+import { User, Bell, Shield, ArrowRight, Headset, Linkedin, Mail, MessageCircle, ExternalLink } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+const SUPPORT_EMAIL = "okitr52@gmail.com";
+const SUPPORT_LINKEDIN = "https://www.linkedin.com/in/otaruram/";
+const SUPPORT_WA_URL = "https://wa.me/6285797968246?text=Halo%20FYJOB%20Support%2C%20saya%20butuh%20bantuan%20terkait%20akun%2Ffitur.%20Mohon%20dibantu%20ya.";
+const SUPPORT_EMAIL_URL = `mailto:${SUPPORT_EMAIL}?subject=FYJOB%20Support&body=Halo%20FYJOB%20Support,%20saya%20butuh%20bantuan%20terkait%20akun%20atau%20fitur.`;
+
+const supportItems = [
+  {
+    title: "Email",
+    subtitle: SUPPORT_EMAIL,
+    href: SUPPORT_EMAIL_URL,
+    icon: Mail,
+    accent: "text-sky-400",
+    surface: "bg-sky-500/10 border-sky-500/20 hover:bg-sky-500/15",
+    actionLabel: "Open email draft",
+  },
+  {
+    title: "WhatsApp",
+    subtitle: "085797968246",
+    href: SUPPORT_WA_URL,
+    icon: MessageCircle,
+    accent: "text-emerald-400",
+    surface: "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/15",
+    actionLabel: "Open WhatsApp chat",
+  },
+  {
+    title: "LinkedIn",
+    subtitle: "linkedin.com/in/otaruram",
+    href: SUPPORT_LINKEDIN,
+    icon: Linkedin,
+    accent: "text-blue-400",
+    surface: "bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/15",
+    actionLabel: "Open LinkedIn profile",
+  },
+] as const;
 
 const Settings = () => {
   const { t } = useTranslation();
@@ -86,6 +122,60 @@ const Settings = () => {
                       </div>
                       <p className="text-sm text-muted-foreground">Review data protection status and key rotation guidance.</p>
                     </Link>
+                  </div>
+
+                  <div className="terminal-shell p-5 sm:p-6">
+                    <div className="flex items-start justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="text-lg font-semibold flex items-center gap-2">
+                          <Headset className="h-5 w-5 text-primary" /> Support
+                        </h2>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Need help with login, billing, or feature issues? Pick a channel below and we will route you to the right contact.
+                        </p>
+                      </div>
+                      <span className="terminal-chip">Fast contact</span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      {supportItems.map((item) => {
+                        const Icon = item.icon;
+
+                        return (
+                          <Popover key={item.title}>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label={`Open ${item.title} support`}
+                                className={`group flex h-14 w-14 items-center justify-center rounded-2xl border transition-all ${item.surface}`}
+                              >
+                                <Icon className={`h-5 w-5 ${item.accent}`} />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-[min(90vw,320px)] border-border bg-card/95 backdrop-blur-xl p-4">
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-foreground">{item.title} Support</p>
+                                  <p className="text-xs text-muted-foreground mt-1">{item.subtitle}</p>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  Send a quick message and include your account email plus a short note about the issue so support can respond faster.
+                                </p>
+                                <a
+                                  href={item.href}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                                >
+                                  {item.actionLabel}
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        );
+                      })}
+                    </div>
                   </div>
                </div>
             </div>

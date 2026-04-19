@@ -61,7 +61,12 @@ export const HeroSection = ({ t }: { t: any }) => {
                 className="flex items-center justify-center w-full sm:w-auto border border-border bg-card/70 hover:bg-card/90 backdrop-blur px-5 sm:px-6 py-3.5 sm:py-4 rounded-xl transition-colors"
                 aria-label="Open FYJOB extension browser options"
               >
-                <FyjobLogo compact iconClassName="h-4 w-4" wordmarkClassName="text-sm font-bold tracking-tight" />
+                <FyjobLogo
+                  compact
+                  iconClassName="h-4 w-4"
+                  wordmarkClassName="text-sm font-bold tracking-tight text-foreground"
+                  label="Download Extension"
+                />
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-[min(92vw,340px)] border-border bg-card/95 backdrop-blur-xl p-3 sm:p-4">
