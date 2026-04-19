@@ -19,12 +19,12 @@ const Index = () => {
       <Helmet>
         <title>FYJOB | Analisis CV, Simulasi Interview AI & Persiapan Kerja</title>
         <meta name="description" content="FYJOB bantu kamu lolos interview dan dapat kerja lebih cepat. Analisis CV otomatis, simulasi interview AI, kuis karier, dan rencana belajar personal. Gratis untuk job seeker Indonesia." />
-        <link rel="canonical" href="https://fyjob.vercel.app/" />
+        <link rel="canonical" href="https://fyjob.my.id/" />
         <script type="application/ld+json">{JSON.stringify({
           "@context": "https://schema.org",
           "@type": "WebApplication",
           "name": "FYJOB",
-          "url": "https://fyjob.vercel.app/",
+          "url": "https://fyjob.my.id/",
           "description": "Platform analisis CV, simulasi interview AI, dan persiapan karier untuk job seeker Indonesia.",
           "applicationCategory": "BusinessApplication",
           "operatingSystem": "Web",

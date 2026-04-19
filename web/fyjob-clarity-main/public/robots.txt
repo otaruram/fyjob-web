@@ -17,4 +17,4 @@ Disallow: /settings
 Disallow: /auth
 Disallow: /admin
 
-Sitemap: https://fyjob.vercel.app/sitemap.xml
+Sitemap: https://fyjob.my.id/sitemap.xml
