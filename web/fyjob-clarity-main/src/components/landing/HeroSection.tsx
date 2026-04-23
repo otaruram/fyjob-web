@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, ExternalLink, Globe, Lock, Terminal } from "lucide-react";
+import { ArrowRight, ExternalLink, Globe, Terminal } from "lucide-react";
 import { motion } from "framer-motion";
 import { FyjobLogo } from "@/components/FyjobLogo";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -72,7 +72,7 @@ export const HeroSection = ({ t }: { t: any }) => {
             <PopoverContent className="w-[min(92vw,340px)] border-border bg-card/95 backdrop-blur-xl p-3 sm:p-4">
               <div className="mb-3">
                 <p className="text-sm font-semibold text-foreground">Install FYJOB Scanner</p>
-                <p className="text-xs text-muted-foreground">Choose your browser. Edge and Chrome are locked for now.</p>
+                <p className="text-xs text-muted-foreground">Choose your browser and install from the official store.</p>
               </div>
 
               <div className="space-y-2">
@@ -90,27 +90,33 @@ export const HeroSection = ({ t }: { t: any }) => {
                   </span>
                 </a>
 
-                <button
-                  type="button"
-                  disabled
-                  className="w-full flex items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5 text-left cursor-not-allowed opacity-70"
+                <a
+                  href="https://microsoftedge.microsoft.com/addons/detail/fyjob-scanner/objmdcdkipiigcjcebddfpidhonoioff"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5 text-left transition-colors hover:bg-primary/15"
                 >
                   <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-                    <Lock className="h-4 w-4 text-muted-foreground" /> Edge
+                    <Globe className="h-4 w-4 text-primary" /> Edge
                   </span>
-                  <span className="text-[11px] text-muted-foreground">TBA</span>
-                </button>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-primary">
+                    Live <ExternalLink className="h-3.5 w-3.5" />
+                  </span>
+                </a>
 
-                <button
-                  type="button"
-                  disabled
-                  className="w-full flex items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5 text-left cursor-not-allowed opacity-70"
+                <a
+                  href="https://chromewebstore.google.com/detail/fyjob-scanner/aiimhnlmhbjekhhjinhlanohlkmmenhe"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5 text-left transition-colors hover:bg-primary/15"
                 >
                   <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-                    <Lock className="h-4 w-4 text-muted-foreground" /> Chrome
+                    <Globe className="h-4 w-4 text-primary" /> Chrome
                   </span>
-                  <span className="text-[11px] text-muted-foreground">TBA</span>
-                </button>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-primary">
+                    Live <ExternalLink className="h-3.5 w-3.5" />
+                  </span>
+                </a>
               </div>
             </PopoverContent>
           </Popover>
