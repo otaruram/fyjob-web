@@ -1,7 +1,15 @@
 -- Supabase Schema for FYJOB (Document Store Model)
 
+-- Drop existing tables if they have the wrong schema
+DROP TABLE IF EXISTS public.users CASCADE;
+DROP TABLE IF EXISTS public.analysis_history CASCADE;
+DROP TABLE IF EXISTS public.ujang_chats CASCADE;
+DROP TABLE IF EXISTS public.user_activity CASCADE;
+DROP TABLE IF EXISTS public.interview_sessions CASCADE;
+DROP TABLE IF EXISTS public.admin_audit_logs CASCADE;
+
 -- 1. Users Table
-CREATE TABLE IF NOT EXISTS public.users (
+CREATE TABLE public.users (
     id TEXT PRIMARY KEY,
     data JSONB DEFAULT '{}'::jsonb
 );
