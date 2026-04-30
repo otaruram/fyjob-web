@@ -390,10 +390,28 @@ export const analyzeJob = (jobDescription: string, jobTitle?: string, portal?: s
 export const chatWithUjang = (
   message: string,
   analysisId?: string,
-  conversationHistory?: Array<{ role: string; content: string }>
+  sessionId?: string
 ) =>
-  fetchApi<{ response: string; credits_remaining: number }>(
-    '/api/chat', 'POST', { message, analysisId, conversationHistory }
+  fetchApi<{ response: string; sessionId: string; credits_remaining: number }>(
+    '/api/chat', 'POST', { action: 'chat', message, analysisId, sessionId }
+  );
+
+/** POST /api/chat action=history — Get all chat sessions */
+export const getUjangHistory = () =>
+  fetchApi<{ history: Array<{ id: string; analysisId: string; latest_user_message: string; latest_assistant_message: string; created_at: string }> }>(
+    '/api/chat', 'POST', { action: 'history' }
+  );
+
+/** POST /api/chat action=get-session — Get specific session */
+export const getUjangSession = (sessionId: string) =>
+  fetchApi<{ session: { messages: Array<{ role: string; content: string }> } }>(
+    '/api/chat', 'POST', { action: 'get-session', sessionId }
+  );
+
+/** POST /api/chat action=delete — Delete session */
+export const deleteUjangSession = (sessionId: string) =>
+  fetchApi<{ ok: boolean; deleted: string }>(
+    '/api/chat', 'POST', { action: 'delete', sessionId }
   );
 
 /** POST /api/generate-quiz */

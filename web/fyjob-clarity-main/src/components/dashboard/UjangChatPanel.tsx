@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageCircle, Send, Sparkles, Briefcase, ChevronRight, RefreshCw } from "lucide-react";
+import { MessageCircle, Send, Sparkles, Briefcase, ChevronRight, RefreshCw, History, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { chatWithUjang, getAnalysisHistory, getUserStats, UserStats } from "@/lib/api";
+import { chatWithUjang, getAnalysisHistory, getUserStats, UserStats, getUjangHistory, getUjangSession, deleteUjangSession } from "@/lib/api";
 
 type Message = {
   role: "ujang" | "user";
@@ -24,6 +24,10 @@ export const UjangChatPanel = () => {
   
   const [analyses, setAnalyses] = useState<Array<{id: string, jobTitle: string, portal: string}>>([]);
   const [selectedAnalysisId, setSelectedAnalysisId] = useState<string>("none");
+
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [chatSessions, setChatSessions] = useState<any[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -42,30 +46,73 @@ export const UjangChatPanel = () => {
   }, [isOpen]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+    if (!isHistoryOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isTyping, isHistoryOpen]);
 
   const loadContextData = async () => {
     try {
-      const [statsData, histData] = await Promise.all([
+      const [statsData, histData, chatHistData] = await Promise.all([
         getUserStats(),
-        getAnalysisHistory(10, 0)
+        getAnalysisHistory(10, 0),
+        getUjangHistory()
       ]);
       setStats(statsData);
       setAnalyses(histData);
+      setChatSessions(chatHistData.history || []);
+
       // Auto-select context from URL if available
       const searchParams = new URL(window.location.href).searchParams;
       const contextId = searchParams.get("context");
 
       if (contextId && histData.some(a => a.id === contextId)) {
          setSelectedAnalysisId(contextId);
-         // Clean URL manually so it doesn't persist on subsequent local reloads
          window.history.replaceState({}, '', window.location.pathname);
       } else if (histData.length > 0 && selectedAnalysisId === "none") {
          setSelectedAnalysisId(histData[0].id);
       }
     } catch (err) {
       console.error("Failed to load Ujang context", err);
+    }
+  };
+
+  const loadSession = async (sessionId: string) => {
+    try {
+      setIsHistoryOpen(false);
+      const res = await getUjangSession(sessionId);
+      if (res.session && res.session.messages) {
+        setMessages([
+          { role: "ujang", content: t('ujang_intro') },
+          ...res.session.messages.map((m: any) => ({
+            role: m.role === 'assistant' ? 'ujang' : 'user',
+            content: m.content
+          }))
+        ]);
+        setActiveSessionId(sessionId);
+        setSelectedAnalysisId(res.session.analysisId || "none");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const startNewChat = () => {
+    setActiveSessionId(null);
+    setMessages([{ role: "ujang", content: t('ujang_intro') }]);
+    setIsHistoryOpen(false);
+  };
+
+  const deleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteUjangSession(sessionId);
+      setChatSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        startNewChat();
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -79,23 +126,28 @@ export const UjangChatPanel = () => {
     setIsTyping(true);
     
     try {
-      // Format history, skipping the first Ujang intro message to ensure it starts with a 'user' message
-      // as required by Gemini's strict alternating roles rules.
-      const formattedHistory = messages
-        .filter((_, idx) => idx !== 0) // Skip index 0 (the hardcoded intro)
-        .map(m => ({ 
-           role: m.role === 'ujang' ? 'assistant' : 'user', 
-           content: m.content 
-        }));
-
-      
       const res = await chatWithUjang(
          userMsg, 
          selectedAnalysisId !== "none" ? selectedAnalysisId : undefined,
-         formattedHistory
+         activeSessionId || undefined
       );
       
       setMessages(prev => [...prev, { role: "ujang", content: res.response }]);
+      setActiveSessionId(res.sessionId);
+
+      setChatSessions(prev => {
+        const exists = prev.find(s => s.id === res.sessionId);
+        if (exists) {
+          return prev.map(s => s.id === res.sessionId ? { ...s, latest_user_message: userMsg, latest_assistant_message: res.response } : s);
+        } else {
+          return [{
+            id: res.sessionId,
+            latest_user_message: userMsg,
+            latest_assistant_message: res.response,
+            created_at: new Date().toISOString()
+          }, ...prev];
+        }
+      });
       
       // Update local credits display
       if (stats) {
@@ -137,93 +189,122 @@ export const UjangChatPanel = () => {
                  </span>
                </div>
              </div>
-             {stats !== null && (
-                <div className="text-[10px] font-mono bg-card px-2 py-1 rounded-md border border-border flex flex-col items-end">
-                <span className="text-muted-foreground uppercase">Mode</span>
-                <span className="text-success">Free Chat</span>
-                </div>
-             )}
+             <div className="flex gap-1">
+               <Button variant={isHistoryOpen ? "secondary" : "ghost"} size="icon" className="h-8 w-8 rounded-full" onClick={() => setIsHistoryOpen(!isHistoryOpen)} title="Chat History">
+                 <History className="h-4 w-4" />
+               </Button>
+               <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={startNewChat} title="New Chat">
+                 <Plus className="h-4 w-4" />
+               </Button>
+             </div>
           </div>
           
           {/* Context Selector */}
-          <div className="flex items-center gap-2 mt-2">
-             <span className="text-[10px] uppercase font-semibold text-muted-foreground whitespace-nowrap">Topic:</span>
-             <Select value={selectedAnalysisId} onValueChange={setSelectedAnalysisId}>
-               <SelectTrigger className="h-7 text-xs bg-card/50 border-border/60">
-                 <SelectValue placeholder="Select Job Context" />
-               </SelectTrigger>
-               <SelectContent>
-                 <SelectItem value="none">General Chat (No Context)</SelectItem>
-                 {analyses.map(a => (
-                    <SelectItem key={a.id} value={a.id}>{a.jobTitle} ({a.portal})</SelectItem>
-                 ))}
-               </SelectContent>
-             </Select>
-          </div>
+          {!isHistoryOpen && (
+            <div className="flex items-center gap-2 mt-2">
+               <span className="text-[10px] uppercase font-semibold text-muted-foreground whitespace-nowrap">Topic:</span>
+               <Select value={selectedAnalysisId} onValueChange={setSelectedAnalysisId}>
+                 <SelectTrigger className="h-7 text-xs bg-card/50 border-border/60">
+                   <SelectValue placeholder="Select Job Context" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="none">General Chat (No Context)</SelectItem>
+                   {analyses.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.jobTitle} ({a.portal})</SelectItem>
+                   ))}
+                 </SelectContent>
+               </Select>
+            </div>
+          )}
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/5">
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed ${
-                msg.role === 'user' 
-                  ? 'bg-primary text-primary-foreground rounded-br-none' 
-                  : 'bg-card border border-border text-foreground rounded-bl-none shadow-sm'
-              }`}>
-                {msg.content}
+        {isHistoryOpen ? (
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-black/5">
+            <h3 className="font-bold mb-4 text-sm">Chat History</h3>
+            {chatSessions.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center mt-10">No chat history yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {chatSessions.map(session => (
+                  <div key={session.id} onClick={() => loadSession(session.id)} className={`p-4 rounded-2xl border cursor-pointer hover:bg-card/80 transition-colors ${activeSessionId === session.id ? 'border-primary bg-primary/5' : 'border-border bg-card'} flex justify-between items-start gap-3 shadow-sm`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{session.latest_user_message}</p>
+                      <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">{session.latest_assistant_message}</p>
+                      <p className="text-[10px] text-muted-foreground/60 mt-2 font-mono">{new Date(session.created_at).toLocaleString()}</p>
+                    </div>
+                    <button onClick={(e) => deleteSession(session.id, e)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-2 rounded-lg shrink-0 transition-colors">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
-          {isTyping && (
-             <div className="flex justify-start">
-               <div className="bg-card border border-border rounded-2xl rounded-bl-none p-4 flex items-center gap-1.5 h-12 shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }}></span>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/5">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed ${
+                  msg.role === 'user' 
+                    ? 'bg-primary text-primary-foreground rounded-br-none' 
+                    : 'bg-card border border-border text-foreground rounded-bl-none shadow-sm'
+                }`}>
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {isTyping && (
+               <div className="flex justify-start">
+                 <div className="bg-card border border-border rounded-2xl rounded-bl-none p-4 flex items-center gap-1.5 h-12 shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                 </div>
                </div>
-             </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
 
-        {/* Quick Actions */}
-        <div className="p-4 border-t border-border/50 bg-card/40 backdrop-blur-md">
-          <div className="flex gap-2 overflow-x-auto pb-3 custom-scrollbar">
-            <Button variant="outline" size="sm" className="text-[11px] h-7 whitespace-nowrap bg-background shadow-sm border-border/80" onClick={() => autofillAction("Gimana cara nembus job ini? Apa skill gap paling gede gw sekarang?")}>
-              <Briefcase className="w-3 h-3 mr-1.5 text-primary" /> How to pass?
-            </Button>
-            <Button variant="outline" size="sm" className="text-[11px] h-7 whitespace-nowrap bg-background shadow-sm border-border/80" onClick={() => autofillAction("Kritik CV gw sejujur-jujurnya sesuai standar Google. Gak usah basa-basi.")}>
-              <Sparkles className="w-3 h-3 mr-1.5 text-warning" /> Roast my CV
-            </Button>
-            <Button variant="outline" size="sm" className="text-[11px] h-7 whitespace-nowrap bg-background shadow-sm border-border/80" onClick={() => autofillAction("Gaji wajarnya untuk posisi ini berapa ya? Jangan kasih range bohongan.")}>
-              <ChevronRight className="w-3 h-3 mr-1.5 text-success" /> Salary check
-            </Button>
+        {/* Quick Actions & Input (Hide if history is open) */}
+        {!isHistoryOpen && (
+          <div className="p-4 border-t border-border/50 bg-card/40 backdrop-blur-md">
+            <div className="flex gap-2 overflow-x-auto pb-3 custom-scrollbar">
+              <Button variant="outline" size="sm" className="text-[11px] h-7 whitespace-nowrap bg-background shadow-sm border-border/80" onClick={() => autofillAction("Gimana cara nembus job ini? Apa skill gap paling gede gw sekarang?")}>
+                <Briefcase className="w-3 h-3 mr-1.5 text-primary" /> How to pass?
+              </Button>
+              <Button variant="outline" size="sm" className="text-[11px] h-7 whitespace-nowrap bg-background shadow-sm border-border/80" onClick={() => autofillAction("Kritik CV gw sejujur-jujurnya sesuai standar Google. Gak usah basa-basi.")}>
+                <Sparkles className="w-3 h-3 mr-1.5 text-warning" /> Roast my CV
+              </Button>
+              <Button variant="outline" size="sm" className="text-[11px] h-7 whitespace-nowrap bg-background shadow-sm border-border/80" onClick={() => autofillAction("Gaji wajarnya untuk posisi ini berapa ya? Jangan kasih range bohongan.")}>
+                <ChevronRight className="w-3 h-3 mr-1.5 text-success" /> Salary check
+              </Button>
+            </div>
+            
+            <div className="flex items-end gap-2 relative">
+              <textarea 
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                   if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                   }
+                }}
+                placeholder={selectedAnalysisId !== "none" ? "Tanya soal job ini..." : "Tanya bebas..."} 
+                className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-colors resize-none h-12 max-h-32 custom-scrollbar shadow-inner"
+                rows={1}
+              />
+              <button 
+                onClick={handleSend}
+                disabled={!input.trim() || isTyping}
+                className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground disabled:opacity-50 shrink-0 hover:bg-primary/90 transition-all shadow-glow"
+              >
+                {isTyping ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-1" />}
+              </button>
+            </div>
           </div>
-          
-          {/* Chat Input */}
-          <div className="flex items-end gap-2 relative">
-            <textarea 
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                 if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                 }
-              }}
-              placeholder={selectedAnalysisId !== "none" ? "Tanya soal job ini..." : "Tanya bebas..."} 
-              className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-colors resize-none h-12 max-h-32 custom-scrollbar shadow-inner"
-              rows={1}
-            />
-            <button 
-              onClick={handleSend}
-              disabled={!input.trim() || isTyping}
-              className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground disabled:opacity-50 shrink-0 hover:bg-primary/90 transition-all shadow-glow"
-            >
-              {isTyping ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-1" />}
-            </button>
-          </div>
-        </div>
+        )}
       </SheetContent>
     </Sheet>
   );
