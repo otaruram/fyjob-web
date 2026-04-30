@@ -1,3 +1,18 @@
 .kiro/
 .vscode/
 .konten
+
+# Local environment and secret files
+**/.env
+**/.env.*
+!**/.env*.example
+
+# Python virtual environments
+.venv/
+**/.venv/
+
+# Generated extension release artifacts
+extension/builds/
+extension/store-assets/
+extension/web-ext-artifacts/
+*.xpi
